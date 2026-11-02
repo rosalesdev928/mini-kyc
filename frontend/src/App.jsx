@@ -62,9 +62,7 @@ export default function App() {
     <div className="app">
       <header className="topbar">
         <div className="brand">
-          <span className="brand-mark" aria-hidden="true">
-            ◭
-          </span>
+          <span className="brand-mark" aria-hidden="true" />
           <span className="brand-name">{t.appName}</span>
         </div>
         <div className="topbar-actions">
