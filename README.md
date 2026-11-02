@@ -6,9 +6,9 @@ through stored procedures. Built for the Fractal Developer Training Program, cha
 
 | | |
 |---|---|
-| Live app | _add your public URL here after deploying_ |
-| API docs (Swagger) | `<your URL>/docs` |
-| Stack | React + Vite · Python FastAPI · MySQL 8 (stored procedures) · Google Gemini Flash · Railway |
+| Live app | https://mini-kyc.onrender.com |
+| API docs (Swagger) | https://mini-kyc.onrender.com/docs |
+| Stack | React + Vite · Python FastAPI · MySQL 8 (stored procedures) · Google Gemini Flash · Render + Aiven |
 
 ## How it works
 
@@ -34,7 +34,7 @@ Diagrams: [sequence](docs/diagrams/sequence.png) · [architecture](docs/diagrams
 | **React + Vite** | Small, fast SPA; the UI is only a form and a result panel. |
 | **MySQL + stored procedures** | Required by the challenge. All writes and reads go through `sp_*` procedures, which keeps SQL out of the application code and makes the insert transactional. |
 | **Gemini Flash** | One multimodal call extracts structured data straight from the image (no OCR + parsing pipeline), has a free tier for development, and supports JSON-schema output. |
-| **Railway + one Docker image** | The API also serves the built frontend, so the deployment is just *app + MySQL*, with no CORS to configure. |
+| **Render + Aiven + one Docker image** | The API also serves the built frontend, so the deployment is just *app + MySQL*, with no CORS to configure. Both services have a free tier. |
 
 ## Project structure
 
@@ -104,7 +104,7 @@ Regenerate them with `python scripts/generate_samples.py`.
 | Variable | Default | Description |
 |---|---|---|
 | `GEMINI_API_KEY` | - | Google AI Studio key. **Never commit it.** |
-| `GEMINI_MODEL` | `gemini-flash-latest` | Any Gemini Flash model your key can use. |
+| `GEMINI_MODEL` | `gemini-flash-latest` | Any Gemini Flash model your key can use (the live app uses `gemini-3.5-flash-lite`). |
 | `OCR_PROVIDER` | `gemini` | `gemini` or `mock` (demo/tests only). |
 | `DB_HOST` `DB_PORT` `DB_USER` `DB_PASSWORD` `DB_NAME` | localhost / 3306 / root / - / mini_kyc | MySQL connection. Railway's `MYSQLHOST`, `MYSQLPORT`... names are also accepted. |
 | `AUTO_MIGRATE` | `true` | Apply `database/*.sql` on startup (idempotent). |
@@ -163,18 +163,18 @@ pytest
 The suite covers image validation (type, size, resolution, blur), the onboarding flow (statuses, rejection paths), OCR output parsing,
 the FAQ retrieval, the SQL script splitter, the API contract (status codes and error bodies) and a check that `PROMPTS.md` contains every runtime prompt.
 
-## Deploy on Railway
+## Deploy (free tier: Render + Aiven)
 
 1. Push this repository to GitHub (public).
-2. In Railway: **New Project -> Deploy from GitHub repo**. It detects the root `Dockerfile` automatically.
-3. In the same project: **New -> Database -> MySQL**.
-4. In the app service, add these variables (use *reference variables* to the MySQL service):
-   `DB_HOST=${{MySQL.MYSQLHOST}}`, `DB_PORT=${{MySQL.MYSQLPORT}}`, `DB_USER=${{MySQL.MYSQLUSER}}`,
-   `DB_PASSWORD=${{MySQL.MYSQLPASSWORD}}`, `DB_NAME=${{MySQL.MYSQLDATABASE}}`, plus `GEMINI_API_KEY` (and optionally `GEMINI_MODEL`).
-5. In the app service **Settings -> Networking**, generate a public domain.
-6. Open `https://<your-domain>/api/v1/health`: it should report `{"status":"ok","database":"up"}`.
+2. **Database:** create a free MySQL service on [Aiven](https://aiven.io) (Free plan). Copy its host, port, user, password and database name.
+3. **App:** on [Render](https://render.com) create a **Web Service** from the GitHub repo. It detects the root `Dockerfile` and injects `PORT`; pick the **Free** instance.
+4. Add these environment variables to the Render service:
+   `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `GEMINI_API_KEY`, and optionally `GEMINI_MODEL` and `GEMINI_TIMEOUT_SECONDS`.
+5. Open `https://<your-service>.onrender.com/api/v1/health`: it should report `{"status":"ok","database":"up"}`.
+6. Optional: add an UptimeRobot monitor on that URL (5-minute interval) so the free instance rarely goes to sleep.
 
-Railway's service names can differ (for example `MySQL` vs `mysql`); use the exact name shown in your project.
+The schema and stored procedures are applied automatically on startup. Note that the free Render instance sleeps after 15 minutes without traffic,
+so the first request after a pause can take up to a minute.
 
 ## Known limitations / next steps
 
