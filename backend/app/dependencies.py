@@ -15,6 +15,7 @@ from app.services.ocr_service import build_ocr_provider
 from app.services.onboarding_service import OnboardingService
 
 FAQ_PATH = Path(__file__).parent / "data" / "faq.md"
+FAQ_PATH_ES = Path(__file__).parent / "data" / "faq.es.md"
 
 
 @lru_cache
@@ -29,7 +30,7 @@ def _get_ocr_provider():
 
 @lru_cache
 def _get_faq_retriever() -> FaqRetriever:
-    return FaqRetriever(load_faq(FAQ_PATH))
+    return FaqRetriever(load_faq(FAQ_PATH), {"es": load_faq(FAQ_PATH_ES)})
 
 
 def get_onboarding_service(

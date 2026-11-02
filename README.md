@@ -156,7 +156,7 @@ Interactive documentation: **`/docs`** (Swagger UI) and `/openapi.json`.
 |---|---|---|
 | `POST` | `/api/v1/onboarding` | `multipart/form-data`: `email` + `document` (JPG/PNG). Returns `201` with the stored record. |
 | `GET` | `/api/v1/onboarding?email=...` | History of an email (document numbers masked, rate limited). |
-| `POST` | `/api/v1/chat` | FAQ chatbot (RAG): `{"question": "..."}`. |
+| `POST` | `/api/v1/chat` | FAQ chatbot (RAG): `{"question": "...", "language": "en" \| "es"}`. Understands both languages and answers in the language of the screen. |
 | `GET` | `/api/v1/reviews/pending` | Operator: records waiting for a decision. Needs the `X-Review-Key` header. |
 | `POST` | `/api/v1/reviews/{id}` | Operator: `{"decision": "APPROVED" \| "REJECTED", "reviewer": "...", "comment": "..."}`. Needs `X-Review-Key`. |
 | `GET` | `/api/v1/admin/overview` | Admin: statistics and registrations of the last days. Needs `X-Review-Key`. |

@@ -118,6 +118,15 @@ def test_chat_answers_from_the_faq(client):
     assert "JPG" in response.json()["answer"]
 
 
+def test_chat_answers_in_the_language_of_the_screen(client):
+    response = client.post("/api/v1/chat", json={"question": "¿Qué documentos puedo usar?", "language": "es"})
+    assert response.status_code == 200
+    assert "carné de extranjería" in response.json()["answer"]
+    unknown = client.post("/api/v1/chat", json={"question": "zzz qqq xxx", "language": "es"})
+    assert unknown.json()["answer"].startswith("No tengo información")
+    assert client.post("/api/v1/chat", json={"question": "hola", "language": "fr"}).status_code == 422
+
+
 def test_swagger_docs_are_available(client):
     assert client.get("/docs").status_code == 200
     assert client.get("/openapi.json").json()["info"]["title"].startswith("Mini KYC")

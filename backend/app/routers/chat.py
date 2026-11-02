@@ -15,4 +15,4 @@ router = APIRouter(prefix="/api/v1/chat", tags=["FAQ chatbot"])
     description="RAG chatbot: retrieves the relevant FAQ entries and answers from them only.",
 )
 async def ask(request: ChatRequest, service: ChatService = Depends(get_chat_service)) -> ChatResponse:
-    return await run_in_threadpool(service.answer, request.question)
+    return await run_in_threadpool(service.answer, request.question, request.language)

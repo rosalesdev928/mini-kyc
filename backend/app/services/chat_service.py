@@ -13,6 +13,8 @@ logger = logging.getLogger(__name__)
 NO_ANSWER = (
     "I don't have information about that. Please contact customer support and they will help you."
 )
+NO_ANSWER_ES = "No tengo información sobre eso. Por favor contacta con atención al cliente y te ayudarán."
+NO_ANSWERS = {"en": NO_ANSWER, "es": NO_ANSWER_ES}
 
 
 class ChatService:
@@ -21,10 +23,11 @@ class ChatService:
         self._settings = settings
         self._client = client
 
-    def answer(self, question: str) -> ChatResponse:
-        entries = self._retriever.search(question)
+    def answer(self, question: str, language: str = "en") -> ChatResponse:
+        """`language` is the language of the user's screen; the FAQ text and the fallback answer use it."""
+        entries = self._retriever.search(question, language=language)
         if not entries:
-            return ChatResponse(answer=NO_ANSWER, sources=[])
+            return ChatResponse(answer=NO_ANSWERS.get(language, NO_ANSWER), sources=[])
 
         sources = [entry.question for entry in entries]
         generated = self._generate(question, entries)

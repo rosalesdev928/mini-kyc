@@ -6,12 +6,13 @@ from app.core.config import Settings
 from app.core.errors import ExtractionFailedError
 from app.core.sql_script import split_sql_script
 from app.prompts import CHAT_PROMPT_TEMPLATE, OCR_SYSTEM_INSTRUCTION, OCR_USER_PROMPT
-from app.services.chat_service import NO_ANSWER, ChatService
+from app.services.chat_service import NO_ANSWER, NO_ANSWER_ES, ChatService
 from app.services.faq_service import FaqRetriever, load_faq
 from app.services.ocr_service import parse_model_output
 
 ROOT = Path(__file__).resolve().parents[2]
 FAQ = load_faq(ROOT / "backend" / "app" / "data" / "faq.md")
+FAQ_ES = load_faq(ROOT / "backend" / "app" / "data" / "faq.es.md")
 
 
 def test_parse_valid_model_output():
@@ -43,6 +44,57 @@ def test_faq_retrieval_finds_the_right_entry():
     top = retriever.search("why was my photo rejected as blurry?")[0]
     assert "blurry" in top.question.lower()
     assert retriever.search("which file formats can I upload")[0].question.startswith("Which image formats")
+
+
+def test_both_faq_files_have_the_same_entries_in_the_same_order():
+    assert len(FAQ) == len(FAQ_ES)
+    # Every Spanish entry is a real translation, not a copy of the English one.
+    assert all(english.answer != spanish.answer for english, spanish in zip(FAQ, FAQ_ES))
+
+
+@pytest.mark.parametrize(
+    "question, expected_english_title",
+    [
+        ("¿Qué documentos puedo usar?", "Which documents can I use?"),
+        ("¿Cómo tomo una buena foto?", "How do I take a good photo of my document?"),
+        ("¿Guardan mi foto?", "Do you store my document photo?"),
+        ("¿Qué formatos de imagen aceptan?", "Which image formats and sizes are accepted?"),
+        ("Mi foto salió borrosa", "Why was my image rejected as blurry?"),
+        ("¿Puedo borrar mis datos personales?", "Can my personal data be erased?"),
+    ],
+)
+def test_spanish_questions_find_the_right_entry_and_answer_in_spanish(question, expected_english_title):
+    retriever = FaqRetriever(FAQ, {"es": FAQ_ES})
+    index = [entry.question for entry in FAQ].index(expected_english_title)
+    top = retriever.search(question, language="es")[0]
+    assert top == FAQ_ES[index]
+
+
+def test_a_question_in_one_language_is_answered_in_the_language_of_the_screen():
+    retriever = FaqRetriever(FAQ, {"es": FAQ_ES})
+    spanish_on_english_screen = retriever.search("¿Guardan mi foto?", language="en")[0]
+    english_on_spanish_screen = retriever.search("Do you store my photo?", language="es")[0]
+    assert spanish_on_english_screen.question == "Do you store my document photo?"
+    assert english_on_spanish_screen.question == "¿Guardan mi foto del documento?"
+
+
+def test_accents_do_not_change_the_search():
+    retriever = FaqRetriever(FAQ, {"es": FAQ_ES})
+    assert retriever.search("que documentos puedo usar", language="es")[0] == retriever.search(
+        "¿Qué documentos puedo usar?", language="es"
+    )[0]
+
+
+def test_retriever_rejects_a_translation_with_a_different_number_of_entries():
+    with pytest.raises(ValueError):
+        FaqRetriever(FAQ, {"es": FAQ_ES[:-1]})
+
+
+def test_chat_answers_in_spanish_without_an_llm():
+    service = ChatService(FaqRetriever(FAQ, {"es": FAQ_ES}), Settings(gemini_api_key=""))
+    response = service.answer("¿Guardan mi foto?", "es")
+    assert "No. La foto" in response.answer
+    assert service.answer("¿cuál es la velocidad del viento en Marte?", "es").answer == NO_ANSWER_ES
 
 
 def test_chat_without_matching_context_does_not_invent_answers():

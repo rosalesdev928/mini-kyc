@@ -123,10 +123,10 @@ export function createOnboarding({ email, file }) {
   return request("/api/v1/onboarding", { method: "POST", body: form });
 }
 
-export function askChatbot(question) {
+export function askChatbot(question, language) {
   return request("/api/v1/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ question }),
+    body: JSON.stringify({ question, language }),
   });
 }

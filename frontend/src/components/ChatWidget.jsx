@@ -1,12 +1,19 @@
 import { useEffect, useRef, useState } from "react";
 import { askChatbot } from "../api.js";
 
-export default function ChatWidget({ t }) {
+export default function ChatWidget({ t, lang }) {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const listRef = useRef(null);
+
+  // The answers are written in the language of the screen, so a conversation cannot be kept when the language changes:
+  // start a new one instead of leaving half of it in the old language.
+  useEffect(() => {
+    setMessages([]);
+    setDraft("");
+  }, [lang]);
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
@@ -19,7 +26,7 @@ export default function ChatWidget({ t }) {
     setDraft("");
     setSending(true);
     try {
-      const response = await askChatbot(text);
+      const response = await askChatbot(text, lang);
       setMessages((current) => [...current, { role: "bot", text: response.answer }]);
     } catch {
       setMessages((current) => [...current, { role: "bot", text: t.chatError }]);

@@ -166,6 +166,7 @@ class HealthResponse(BaseModel):
 
 class ChatRequest(BaseModel):
     question: str = Field(min_length=2, max_length=500)
+    language: Literal["en", "es"] = Field("en", description="Language of the user's screen; the answer is given in it.")
 
 
 class ChatResponse(BaseModel):

@@ -36,3 +36,6 @@ Retake the photo so that the whole document is visible, with no glare and no cro
 
 ## Can I register more than once with the same email?
 Yes. Each upload creates a new onboarding record linked to the same customer email, so you can retry after a failed or low confidence attempt.
+
+## Can my personal data be erased?
+Yes. Records are anonymized automatically after a retention period (30 days by default), and an operator can erase the personal data of a record on request. The name, document number and file name are replaced with placeholders and the email is detached; only a technical audit trail is kept.

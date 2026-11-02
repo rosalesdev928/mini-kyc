@@ -45,7 +45,8 @@ export default function App() {
 
   useEffect(() => {
     document.documentElement.lang = lang;
-  }, [lang]);
+    document.title = `${t.brandName} · ${t.brandTagline}`;
+  }, [lang, t]);
 
   useEffect(() => {
     if (status !== "loading") {
@@ -170,7 +171,7 @@ export default function App() {
         </main>
       )}
 
-      <ChatWidget t={t} />
+      <ChatWidget t={t} lang={lang} />
     </div>
   );
 }
