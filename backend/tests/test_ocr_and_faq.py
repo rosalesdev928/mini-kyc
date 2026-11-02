@@ -71,9 +71,28 @@ def test_sql_script_splitter_handles_delimiters():
 def test_real_sql_files_produce_expected_statements():
     schema = split_sql_script((ROOT / "database" / "schema.sql").read_text())
     procedures = split_sql_script((ROOT / "database" / "stored_procedures.sql").read_text())
-    assert sum(s.startswith("CREATE TABLE") for s in schema) == 5
-    assert sum(s.startswith("CREATE PROCEDURE") for s in procedures) == 7
+    assert sum(s.startswith("CREATE TABLE") for s in schema) == 6
+    assert sum(s.startswith("CREATE OR REPLACE VIEW v_onboarding_details") for s in schema) == 1
+    assert sum(s.startswith("CREATE PROCEDURE") for s in procedures) == 13
     assert not any("DELIMITER" in s for s in procedures)
+
+
+def test_every_procedure_the_repository_calls_exists_in_the_sql_file():
+    """The API and the database scripts are written separately: this catches a renamed or missing procedure
+    without needing a running MySQL."""
+    import re
+
+    repository = (ROOT / "backend" / "app" / "repositories" / "onboarding_repository.py").read_text()
+    procedures = (ROOT / "database" / "stored_procedures.sql").read_text()
+    called = set(re.findall(r'"(sp_[a-z_]+)"', repository))
+    defined = set(re.findall(r"CREATE PROCEDURE (sp_[a-z_]+)", procedures))
+    assert called and called <= defined, called - defined
+
+
+def test_the_read_model_exposes_every_column_the_repository_maps():
+    schema = (ROOT / "database" / "schema.sql").read_text()
+    for column in ("effective_status", "erased_at", "review_decision", "reviewed_by", "flags", "document_type"):
+        assert f"AS {column}" in schema, column
 
 
 def test_every_text_parameter_of_the_procedures_declares_its_collation():

@@ -1,5 +1,6 @@
 """FastAPI application factory."""
 
+import asyncio
 import logging
 import re
 import time
@@ -17,7 +18,9 @@ from app.core.config import Settings, get_settings
 from app.core.database import run_migrations
 from app.core.errors import AppError
 from app.core.logging_config import configure_logging, request_id_var
-from app.routers import chat, health, onboarding, review
+from app.core.rate_limit import build_limiters
+from app.core.retention import run_retention_loop
+from app.routers import admin, chat, health, onboarding, review
 
 logger = logging.getLogger("mini_kyc")
 
@@ -27,6 +30,15 @@ def _error_response(status_code: int, code: str, message: str, details: object |
     if details is not None:
         body["details"] = details
     return JSONResponse(status_code=status_code, content={"error": body})
+
+
+# Content Security Policy for the React app: only our own files, no inline scripts. Swagger UI (/docs, /redoc)
+# loads its assets from a CDN, so those pages are exempt from the CSP (the other headers still apply).
+_CSP = (
+    "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; "
+    "script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+)
+_CSP_EXEMPT_PREFIXES = ("/docs", "/redoc", "/openapi.json")
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -40,7 +52,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 run_migrations(settings)
             except Exception as exc:  # keep the API up; /health will report the database as down
                 logger.error("Database migration failed: %s", exc)
-        yield
+        retention_task = None
+        if settings.data_retention_days > 0:
+            from app.dependencies import get_repository  # imported here: it opens the database pool lazily
+            from app.services.admin_service import AdminService
+
+            def purge() -> int:
+                return AdminService(get_repository(), settings).purge_expired()
+
+            retention_task = asyncio.create_task(run_retention_loop(purge, settings.retention_check_hours))
+        try:
+            yield
+        finally:
+            if retention_task:
+                retention_task.cancel()
 
     app = FastAPI(
         title="Mini KYC - Digital Onboarding API",
@@ -51,6 +76,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         ),
         lifespan=lifespan,
     )
+
+    app.state.limiters = build_limiters(settings)
 
     if settings.cors_origin_list:
         app.add_middleware(
@@ -79,9 +106,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         finally:
             request_id_var.reset(token)
 
+    if settings.security_headers_enabled:
+
+        @app.middleware("http")
+        async def add_security_headers(request: Request, call_next):
+            response = await call_next(request)
+            response.headers.setdefault("X-Content-Type-Options", "nosniff")
+            response.headers.setdefault("X-Frame-Options", "DENY")
+            response.headers.setdefault("Referrer-Policy", "same-origin")
+            response.headers.setdefault("Permissions-Policy", "camera=(self), microphone=(), geolocation=()")
+            if request.headers.get("x-forwarded-proto") == "https" or request.url.scheme == "https":
+                response.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
+            if not request.url.path.startswith(_CSP_EXEMPT_PREFIXES):
+                response.headers.setdefault("Content-Security-Policy", _CSP)
+            return response
+
     @app.exception_handler(AppError)
     async def handle_app_error(_: Request, exc: AppError):
-        return _error_response(exc.status_code, exc.code, exc.message, exc.details)
+        response = _error_response(exc.status_code, exc.code, exc.message, exc.details)
+        for name, value in (getattr(exc, "headers", None) or {}).items():
+            response.headers[name] = value
+        return response
 
     @app.exception_handler(RequestValidationError)
     async def handle_validation_error(_: Request, exc: RequestValidationError):
@@ -99,6 +144,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(health.router)
     app.include_router(onboarding.router)
     app.include_router(review.router)
+    app.include_router(admin.router)
     app.include_router(chat.router)
 
     _mount_frontend(app, settings)

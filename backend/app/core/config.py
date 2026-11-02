@@ -33,8 +33,17 @@ class Settings(BaseSettings):
     min_verified_confidence: float = 0.85
     duplicate_check_enabled: bool = True  # flag the same document/photo registered under another email
 
-    # --- Operator review (approve / reject records flagged NEEDS_REVIEW) ---
-    review_api_key: str = ""  # empty = review endpoints are disabled (secure by default)
+    # --- Operator review and admin dashboard (same shared secret) ---
+    review_api_key: str = ""  # empty = review and admin endpoints are disabled (secure by default)
+
+    # --- Privacy and abuse protection ---
+    data_retention_days: int = 30  # records older than this are anonymized automatically; 0 = keep forever
+    retention_check_hours: float = 6.0  # how often the retention job runs while the server is awake
+    rate_limit_uploads_per_minute: int = 10  # per IP; also protects the free AI quota. 0 = no limit
+    rate_limit_history_per_minute: int = 30  # per IP, for the public history lookup. 0 = no limit
+    rate_limit_admin_failures: int = 5  # wrong operator keys allowed per IP in the window below. 0 = no limit
+    rate_limit_admin_window_seconds: int = 300
+    security_headers_enabled: bool = True
 
     # --- Upload validation ---
     max_upload_bytes: int = 5 * 1024 * 1024

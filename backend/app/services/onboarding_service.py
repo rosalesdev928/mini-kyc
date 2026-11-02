@@ -21,6 +21,7 @@ from app.schemas import (
     ExtractedDocument,
     NewOnboarding,
     OnboardingResponse,
+    mask_document_number,
 )
 from app.services.image_validation import validate_upload
 from app.services.ocr_service import OcrProvider
@@ -115,7 +116,12 @@ class OnboardingService:
         return record
 
     def list_for_email(self, email: str) -> list[OnboardingResponse]:
-        return self._repository.list_by_email(normalize_email(email))
+        """Public history lookup. There is no login, so the document number is masked."""
+        records = self._repository.list_by_email(normalize_email(email))
+        return [
+            record.model_copy(update={"document_number": mask_document_number(record.document_number)})
+            for record in records
+        ]
 
     def list_pending_reviews(self) -> list[OnboardingResponse]:
         return self._repository.list_pending_reviews()

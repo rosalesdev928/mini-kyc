@@ -138,3 +138,130 @@ def test_stored_procedure_enforces_the_review_rules_itself(repository, settings)
         repository.review(created.id, "APPROVED", "Ana", None)
     with pytest.raises(ConflictError):
         repository.review(999_999_999, "APPROVED", "Ana", None)
+
+
+# ---------- admin dashboard (read model, filters, audit trail, erasure) ----------
+
+
+def test_admin_stats_count_every_status(repository, settings):
+    before = repository.stats()
+    verified = service_for(repository, settings, unique_number()).process(unique_email(), "a.png", unique_image())
+    flagged = service_for(repository, settings, unique_number(), confidence=0.4).process(
+        unique_email(), "b.png", unique_image()
+    )
+    OnboardingService(repository, FakeOcr(), settings).review(flagged.id, "REJECTED", "Ana", None)
+
+    after = repository.stats()
+
+    assert after.total == before.total + 2
+    assert after.verified == before.verified + 1
+    assert after.rejected == before.rejected + 1
+    assert after.needs_review == before.needs_review
+    assert verified.status == "VERIFIED"
+
+
+def test_daily_counts_include_today(repository, settings):
+    service_for(repository, settings, unique_number()).process(unique_email(), "a.png", unique_image())
+    series = repository.daily_counts(7)
+    assert len(series) == 7 and series[-1].total >= 1
+
+
+def test_search_filters_and_paginates(repository, settings):
+    from app.schemas import AdminFilters
+
+    marker = uuid.uuid4().hex[:8]
+    emails = [f"{marker}-{index}@example.com" for index in range(3)]
+    for index, email in enumerate(emails):
+        service_for(repository, settings, unique_number(), confidence=0.97 if index else 0.4).process(
+            email, "dni.png", unique_image()
+        )
+
+    everything, total = repository.search(AdminFilters(query=marker), 25, 0)
+    assert total == 3 and {item.email for item in everything} == set(emails)
+
+    flagged, flagged_total = repository.search(AdminFilters(status="NEEDS_REVIEW", query=marker), 25, 0)
+    assert flagged_total == 1 and flagged[0].email == emails[0]
+
+    first_page, page_total = repository.search(AdminFilters(query=marker), 2, 0)
+    second_page, _ = repository.search(AdminFilters(query=marker), 2, 2)
+    assert page_total == 3 and len(first_page) == 2 and len(second_page) == 1
+
+    nothing, zero = repository.search(AdminFilters(query=marker, status="APPROVED"), 25, 0)
+    assert nothing == [] and zero == 0
+
+
+def test_search_treats_like_wildcards_literally(repository, settings):
+    from app.schemas import AdminFilters
+
+    service_for(repository, settings, unique_number()).process(unique_email(), "dni.png", unique_image())
+    _, total = repository.search(AdminFilters(query="%"), 25, 0)
+    assert total == 0  # no email, name or number contains a percent sign
+
+
+def test_event_trail_lists_registration_flags_and_decision(repository, settings):
+    service = service_for(repository, settings, unique_number(), confidence=0.4)
+    created = service.process(unique_email(), "dni.png", unique_image())
+    service.review(created.id, "APPROVED", "Ana", "name matches")
+
+    events = repository.list_events(created.id)
+
+    assert [event.event_type for event in events] == ["REGISTERED", "FLAGGED", "APPROVED"]
+    assert events[1].detail == "LOW_CONFIDENCE"
+    assert events[2].actor == "Ana" and events[2].detail == "name matches"
+
+
+def test_anonymize_erases_personal_data_but_keeps_the_audit_trail(repository, settings):
+    email = unique_email()
+    service = service_for(repository, settings, unique_number(), confidence=0.4)
+    created = service.process(email, "dni.png", unique_image())
+    service.review(created.id, "APPROVED", "Ana", "the customer phoned us")
+
+    erased = repository.anonymize(created.id, "Luis", "customer request")
+
+    assert erased.status == "ERASED"
+    assert erased.full_name == "[erased]"
+    assert erased.document_number == f"ERASED-{created.id}"
+    assert erased.email == f"erased-{created.id}@anonymized.invalid"
+    assert erased.original_filename is None and erased.review_comment is None
+    assert repository.list_by_email(email) == []  # the real customer is gone
+    events = repository.list_events(created.id)
+    assert events[-1].event_type == "ANONYMIZED" and events[-1].actor == "Luis"
+    assert repository.stats().erased >= 1
+
+
+def test_anonymize_is_refused_twice_and_for_unknown_records(repository, settings):
+    created = service_for(repository, settings, unique_number()).process(unique_email(), "a.png", unique_image())
+    repository.anonymize(created.id, "Luis", None)
+    with pytest.raises(ConflictError):
+        repository.anonymize(created.id, "Luis", None)
+    with pytest.raises(ConflictError):
+        repository.anonymize(999_999_999, "Luis", None)
+
+
+def test_an_anonymized_record_cannot_be_reviewed_even_through_the_procedure(repository, settings):
+    created = service_for(repository, settings, unique_number(), confidence=0.4).process(
+        unique_email(), "a.png", unique_image()
+    )
+    repository.anonymize(created.id, "Luis", None)
+    with pytest.raises(ConflictError):
+        repository.review(created.id, "APPROVED", "Ana", None)
+    assert created.id not in [record.id for record in repository.list_pending_reviews(500)]
+
+
+def test_anonymizing_one_record_keeps_the_other_records_of_the_same_customer(repository, settings):
+    email = unique_email()
+    first = service_for(repository, settings, unique_number()).process(email, "a.png", unique_image())
+    second = service_for(repository, settings, unique_number()).process(email, "b.png", unique_image())
+
+    repository.anonymize(first.id, "Luis", None)
+
+    assert [record.id for record in repository.list_by_email(email)] == [second.id]
+
+
+def test_retention_lists_only_old_unerased_records(repository, settings):
+    created = service_for(repository, settings, unique_number()).process(unique_email(), "a.png", unique_image())
+    assert created.id not in repository.list_expired_ids(30, 1000)
+    # A cutoff one day in the future (-1) makes every record "expired" without waiting or touching timestamps.
+    assert created.id in repository.list_expired_ids(-1, 100_000)
+    repository.anonymize(created.id, "retention-policy", "Older than the cutoff")
+    assert created.id not in repository.list_expired_ids(-1, 100_000)

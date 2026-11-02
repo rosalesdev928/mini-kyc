@@ -66,3 +66,48 @@ CREATE TABLE IF NOT EXISTS onboarding_reviews (
     KEY ix_reviews_onboarding (onboarding_id),
     CONSTRAINT fk_reviews_onboarding FOREIGN KEY (onboarding_id) REFERENCES onboarding_records (id)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+-- Personal data erasure ("right to be forgotten"). The onboarding row is kept so that counts and the audit trail
+-- survive, but its personal data is replaced by the erasure procedure. 1 record : 0..1 erasure.
+CREATE TABLE IF NOT EXISTS onboarding_erasures (
+    onboarding_id  BIGINT UNSIGNED NOT NULL,
+    erased_by      VARCHAR(100)    NOT NULL,
+    reason         VARCHAR(200)    NULL,
+    created_at     DATETIME        NOT NULL,
+    PRIMARY KEY (onboarding_id),
+    CONSTRAINT fk_erasures_onboarding FOREIGN KEY (onboarding_id) REFERENCES onboarding_records (id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+-- One flat read model: the record with its customer, document type, reasons for review, latest operator decision
+-- and erasure. effective_status is the single place that decides which status the outside world sees:
+-- ERASED beats the operator decision, which beats the automatic status.
+-- The explicit collation keeps comparisons with the procedure parameters safe on any server default.
+CREATE OR REPLACE VIEW v_onboarding_details AS
+SELECT o.id AS id,
+       c.email AS email,
+       dt.code AS document_type,
+       o.full_name AS full_name,
+       o.document_number AS document_number,
+       o.ocr_confidence AS ocr_confidence,
+       o.status AS status,
+       o.original_filename AS original_filename,
+       o.created_at AS created_at,
+       (SELECT GROUP_CONCAT(f.code ORDER BY f.id SEPARATOR ',')
+          FROM onboarding_flags f
+         WHERE f.onboarding_id = o.id) AS flags,
+       rv.decision AS review_decision,
+       rv.reviewer AS reviewed_by,
+       rv.review_comment AS review_comment,
+       rv.created_at AS reviewed_at,
+       er.created_at AS erased_at,
+       CONVERT(
+           CASE WHEN er.onboarding_id IS NOT NULL THEN 'ERASED'
+                WHEN rv.decision IS NOT NULL THEN rv.decision
+                ELSE o.status
+           END USING utf8mb4) COLLATE utf8mb4_unicode_ci AS effective_status
+  FROM onboarding_records o
+  JOIN customers c ON c.id = o.customer_id
+  JOIN document_types dt ON dt.id = o.document_type_id
+  LEFT JOIN onboarding_reviews rv
+    ON rv.id = (SELECT MAX(r2.id) FROM onboarding_reviews r2 WHERE r2.onboarding_id = o.id)
+  LEFT JOIN onboarding_erasures er ON er.onboarding_id = o.id;

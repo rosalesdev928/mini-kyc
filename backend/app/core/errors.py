@@ -98,3 +98,17 @@ class ConflictError(AppError):
 
 class NotPendingReviewError(ConflictError):
     code = "NOT_PENDING_REVIEW"
+
+
+class InvalidFilterError(AppError):
+    status_code = 422
+    code = "INVALID_FILTER"
+
+
+class TooManyRequestsError(AppError):
+    status_code = 429
+    code = "TOO_MANY_REQUESTS"
+
+    def __init__(self, message: str, *, retry_after_seconds: int = 60):
+        super().__init__(message)
+        self.headers = {"Retry-After": str(retry_after_seconds)}

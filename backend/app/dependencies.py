@@ -8,6 +8,7 @@ from fastapi import Depends
 from app.core.config import Settings, get_settings
 from app.core.database import create_pool
 from app.repositories.onboarding_repository import OnboardingRepository
+from app.services.admin_service import AdminService
 from app.services.chat_service import ChatService
 from app.services.faq_service import FaqRetriever, load_faq
 from app.services.ocr_service import build_ocr_provider
@@ -36,6 +37,13 @@ def get_onboarding_service(
     repository: OnboardingRepository = Depends(get_repository),
 ) -> OnboardingService:
     return OnboardingService(repository, _get_ocr_provider(), settings)
+
+
+def get_admin_service(
+    settings: Settings = Depends(get_settings),
+    repository: OnboardingRepository = Depends(get_repository),
+) -> AdminService:
+    return AdminService(repository, settings)
 
 
 @lru_cache
