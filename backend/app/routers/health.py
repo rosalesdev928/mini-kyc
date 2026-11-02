@@ -8,6 +8,8 @@ from app.schemas import HealthResponse
 router = APIRouter(prefix="/api/v1", tags=["Health"])
 
 
+# HEAD is accepted too (hidden from Swagger) because uptime monitors probe with HEAD by default.
+@router.head("/health", include_in_schema=False)
 @router.get("/health", response_model=HealthResponse, summary="Service and database health")
 async def health(repository: OnboardingRepository = Depends(get_repository)) -> HealthResponse:
     database_up = await run_in_threadpool(repository.ping)

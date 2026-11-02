@@ -79,6 +79,10 @@ def test_unknown_record_returns_404(client):
     assert response.json()["error"]["code"] == "NOT_FOUND"
 
 
+def test_health_accepts_head_requests(client):
+    assert client.head("/api/v1/health").status_code == 200
+
+
 def test_health_reports_database_up(client):
     assert client.get("/api/v1/health").json() == {"status": "ok", "database": "up"}
 
