@@ -260,7 +260,8 @@ def test_admin_endpoints_are_disabled_without_a_configured_key(client):
 
 
 def test_admin_endpoints_reject_a_missing_or_wrong_key():
-    client = make_client(review_api_key="secret")
+    # The IP lockout has its own test; here it is switched off so that many wrong attempts can be made in a row.
+    client = make_client(review_api_key="secret", rate_limit_admin_failures=0)
     for path in ADMIN_PATHS:
         assert client.get(path).status_code == 401
         assert client.get(path, headers={"X-Review-Key": "nope"}).status_code == 401
