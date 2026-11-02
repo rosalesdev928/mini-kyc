@@ -1,16 +1,13 @@
 # PROMPTS.md
 
 All AI prompts used in this project, as required by deliverable 6 / requirement R3.4.
-It has two parts:
-
-1. **Runtime prompts** - the exact texts the application sends to the AI service (Gemini).
-   They live in `backend/app/prompts.py`; a unit test (`test_prompts_md_lists_every_runtime_prompt`)
-   fails if this file and the code ever differ.
-2. **Development prompts** - the prompts given to the AI coding assistant (Claude) to build the project.
+These are the exact texts the application sends to the AI service (Gemini).
+They live in `backend/app/prompts.py`; a unit test (`test_prompts_md_lists_every_runtime_prompt`)
+fails if this file and the code ever differ.
 
 ---
 
-## Part 1 - Runtime prompts (Gemini Flash)
+## Runtime prompts (Gemini Flash)
 
 ### 1.1 OCR - system instruction
 
@@ -56,32 +53,3 @@ FAQ context:
 
 Question: {question}
 ```
-
----
-
-## Part 2 - Development prompts (AI coding assistant)
-
-Assistant used: Claude (Anthropic). The challenge PDF (`DTP-L3_Onboarding-KYC_ES_1.pdf`) and a screenshot of the
-invitation email were attached to the conversation. Prompts are quoted verbatim in the original Spanish, with an English translation.
-
-### 2.1 Requirements review and planning
-
-> `revisa primero y todo los reeuqerimiento y damelo por fases de como emepzaria-? si necesito algo? o investifa, que deberia utilizar, pirmeor.`
-
-English: *"First review all the requirements and give them to me in phases: how would I start? Do I need anything? Or research what I should use, first."*
-
-Result: a phased plan (design, core, frontend and deployment, documentation) and a stack recommendation
-(FastAPI + React + MySQL + Gemini Flash + Railway).
-
-### 2.2 Build the whole project
-
-> `no me queda 2 dias, necesito hacerlo ya , olvida eso, solo encesito haerlo todo d euna vez`
-
-English: *"I don't have 2 days left, I need to do it now, forget that, I just need to do it all at once."*
-
-Result: this repository (backend, frontend, database scripts, documentation, Docker, tests).
-
-### 2.3 Further prompts
-
-_Add here, verbatim, every additional prompt you send to any AI assistant while finishing, debugging or deploying
-the project (for example while fixing deployment errors)._
