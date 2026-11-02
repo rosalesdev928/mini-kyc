@@ -13,7 +13,7 @@ Read the code once before presenting, so that every answer below is something yo
 
 1. **Architecture diagram** (`docs/diagrams/architecture.png`): browser -> FastAPI (routers -> services -> repository) -> MySQL; services -> Gemini.
 2. **Sequence diagram** (`docs/diagrams/sequence.png`): upload -> validation -> OCR -> stored procedure -> response, plus the error branch.
-3. **Live demo**: sharp sample (success), blurry sample (422), PDF (415), then Swagger at `/docs`.
+3. **Live demo**: sharp sample (success), blurry sample (422), PDF (415), the Admin panel (statistics, filters, approve a flagged record, export CSV, erase data), dark mode, then Swagger at `/docs`.
 4. **Code tour**, only these files:
    * `backend/app/services/onboarding_service.py` - the business flow.
    * `backend/app/services/image_validation.py` - validation by content, blur detection.
@@ -41,6 +41,13 @@ Read the code once before presenting, so that every answer below is something yo
 | Review endpoints behind a key, disabled by default | `REVIEW_API_KEY` empty means the endpoints answer `503 REVIEW_DISABLED`, so a forgotten variable never exposes them. Compared with `hmac.compare_digest`. In a real system: OIDC/JWT and roles. |
 | Explicit collation in the stored procedures | Aiven's MySQL defaults to `utf8mb4_0900_ai_ci` while the tables use `utf8mb4_unicode_ci`; comparing a parameter with a column raised error 1267 in production. Parameters now declare the collation, with a regression test. |
 | CI with a real MySQL | GitHub Actions runs the whole suite against a MySQL 8 container, including integration tests of the migrations and the procedures. |
+| Admin read model as a SQL view | `v_onboarding_details` joins customer, record, flags and the latest decision once, and computes `effective_status`. The list, detail and search procedures all read from it, so the status logic lives in one place. |
+| Search with `COUNT(*) OVER ()` | One query returns the page and the total count, so pagination needs no second round trip. LIKE wildcards in the user's text are escaped. |
+| Erasure by anonymization, not DELETE | The audit trail (who decided what, when) must survive, but the personal data must not. The procedure replaces name, number, image hash and file name, detaches the email and records who erased it and why. Retention runs the same procedure automatically after 30 days. |
+| CSV export hardening | Cells starting with `=`, `+`, `-` or `@` are prefixed so a spreadsheet never runs them as formulas (CSV injection); numbers are masked; a BOM keeps accents correct in Excel. |
+| Rate limiting and lockout | A sliding window per IP on uploads (also protects the free AI quota), on the history lookup and on wrong operator keys. It is in memory, so it is per instance and the IP header can be spoofed: a guard, not a security boundary. |
+| Security headers and CSP | Strict CSP (no inline scripts: the theme script is an external file). `/docs` is exempt because Swagger UI loads assets from a CDN. |
+| Removing the public lookup by id | Sequential ids made every record guessable. The only public read is the history by email, with masked numbers. |
 | Request id in every log line | Makes it possible to follow one request across the middleware, the service and the repository (`X-Request-ID`). |
 
 ## 4. "Hardest technical challenge" - pick one you actually understood
@@ -53,10 +60,12 @@ Read the code once before presenting, so that every answer below is something yo
 ## 5. Questions to expect
 
 * *What happens if Gemini is down or rate-limited?* -> It is retried with backoff, then a fallback model is tried; if everything fails the user gets `503 OCR_RATE_LIMITED` / `502 OCR_PROVIDER_ERROR` and nothing is stored.
-* *What if the free server is asleep?* -> The UI pings `/health`, shows "waking up the server" if it is slow, and UptimeRobot keeps it awake in practice.
-* *Why is a record `NEEDS_REVIEW`?* -> The `flags` field says why (low confidence, bad number format, duplicate document or photo under another email). An operator approves or rejects it from the Operator screen.
+* *What if the free server is asleep?* -> The UI pings `/health`, shows "waking up the server" if it is slow, and an uptime monitor can keep it awake during the demo (not 24/7: Render's free plan has a monthly hour budget).
+* *Why is a record `NEEDS_REVIEW`?* -> The `flags` field says why (low confidence, bad number format, duplicate document or photo under another email). An operator approves or rejects it from the Admin panel.
 * *Demo tip:* uploading the same photo with a *different* email is flagged as `DUPLICATE_IMAGE` on purpose (possible identity reuse). Use the same email to show `VERIFIED`, or a second email to show the review flow.
 * *How would you scale it?* -> Stateless API (horizontal scaling), connection pool, async job queue for OCR, object storage if images must be kept.
 * *How would you improve accuracy?* -> Cross-check with a second provider, validate DNI check digit, compare against a registry (RENIEC), human-in-the-loop for low confidence.
-* *Security?* -> Add authentication, rate limiting, HTTPS only, encryption at rest, audit log, retention policy for PII.
+* *Security?* -> Already in: operator key (disabled by default, constant-time compare, lockout), rate limits, security headers + CSP, masked numbers, no image storage, retention + erasure. Still missing for real use: user authentication (the history is by email only), roles/OIDC for operators, a shared rate limiter, encryption at rest and a data-processing agreement with the AI provider (the Gemini free tier may use submitted content to improve Google's products).
+* *Is the data safe on free hosting?* -> It is a demo with fake documents: TLS in transit, secrets in env vars, minimal data, automatic anonymization. A real bank would use paid managed services, private networking, backups and a compliant AI contract.
+* *Why is the admin tied to one key?* -> Scope of a PoC. Production: SSO/OIDC, roles (reviewer vs. admin), per-user audit.
 * *What would you test next?* -> Integration tests against a real MySQL (testcontainers) and contract tests for the OCR provider.

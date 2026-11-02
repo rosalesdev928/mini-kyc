@@ -5,19 +5,23 @@ flowchart LR
     subgraph Cloud["Render (web service) + Aiven (MySQL)"]
         subgraph App["FastAPI app (Docker)"]
             R[Routers<br/>HTTP only]
-            S[Services<br/>validation, OCR with retry + fallback,<br/>business rules, operator review, FAQ RAG]
+            S[Services<br/>validation, OCR with retry + fallback,<br/>business rules, operator review, admin stats/CSV/erasure, FAQ RAG]
             P[Repository<br/>calls stored procedures]
             ST[Static files<br/>built React app]
+            M[Middleware<br/>security headers + CSP, rate limiter, request id]
+            RJ[Retention job<br/>anonymizes old records]
         end
-        D[(MySQL 8<br/>customers, document_types, onboarding_records,<br/>onboarding_flags, onboarding_reviews + SPs)]
+        D[(MySQL 8<br/>customers, document_types, onboarding_records,<br/>onboarding_flags, onboarding_reviews, onboarding_erasures,<br/>view v_onboarding_details + 13 SPs)]
     end
     G[Google Gemini Flash API]
 
     B -->|GET /| ST
     B -->|REST multipart / JSON| R
     R --> S
+    M -.-> R
+    RJ -.-> S
     S --> P
     P -->|CALL sp_*| D
     S -->|image + prompt| G
-    ENV[/Environment variables<br/>GEMINI_API_KEY, DB_*, REVIEW_API_KEY/] -.-> App
-    UP[UptimeRobot<br/>pings /api/v1/health] -.-> R
+    ENV[/Environment variables<br/>GEMINI_API_KEY, DB_*, REVIEW_API_KEY, DATA_RETENTION_DAYS/] -.-> App
+    UP[Optional uptime monitor<br/>pings /api/v1/health] -.-> R

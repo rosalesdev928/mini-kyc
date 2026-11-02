@@ -32,6 +32,7 @@ services:
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-flash-latest}
       GEMINI_FALLBACK_MODEL: ${GEMINI_FALLBACK_MODEL:-gemini-3.6-flash}
       REVIEW_API_KEY: ${REVIEW_API_KEY:-}
+      DATA_RETENTION_DAYS: ${DATA_RETENTION_DAYS:-30}
       OCR_PROVIDER: ${OCR_PROVIDER:-gemini}
       AUTO_MIGRATE: "true"
     ports:

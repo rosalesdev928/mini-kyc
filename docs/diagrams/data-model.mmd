@@ -3,6 +3,7 @@ erDiagram
     document_types ||--o{ onboarding_records : "classifies"
     onboarding_records ||--o{ onboarding_flags : "has reasons for review"
     onboarding_records ||--o{ onboarding_reviews : "has operator decisions"
+    onboarding_records ||--o| onboarding_erasures : "may be anonymized"
 
     customers {
         bigint id PK
@@ -39,4 +40,14 @@ erDiagram
         varchar reviewer
         varchar review_comment
         datetime created_at "UTC"
+    }
+    onboarding_erasures {
+        bigint onboarding_id PK, FK
+        varchar erased_by "operator or retention job"
+        varchar reason
+        datetime created_at "UTC"
+    }
+    v_onboarding_details {
+        view read_model "record + customer + flags + latest decision + erasure"
+        enum effective_status "VERIFIED, NEEDS_REVIEW, APPROVED, REJECTED, ERASED"
     }

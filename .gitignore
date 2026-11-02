@@ -18,3 +18,8 @@ frontend/dist/
 .DS_Store
 .idea/
 .vscode/
+
+# temporary folders used to unpack deliveries
+mini-kyc-mejoras*/
+mejoras*/
+update*/
