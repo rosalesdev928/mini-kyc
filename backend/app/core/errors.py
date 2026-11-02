@@ -79,3 +79,22 @@ class OcrProviderError(AppError):
 class DatabaseUnavailableError(AppError):
     status_code = 503
     code = "DATABASE_UNAVAILABLE"
+
+
+class UnauthorizedError(AppError):
+    status_code = 401
+    code = "UNAUTHORIZED"
+
+
+class ReviewDisabledError(AppError):
+    status_code = 503
+    code = "REVIEW_DISABLED"
+
+
+class ConflictError(AppError):
+    status_code = 409
+    code = "CONFLICT"
+
+
+class NotPendingReviewError(ConflictError):
+    code = "NOT_PENDING_REVIEW"

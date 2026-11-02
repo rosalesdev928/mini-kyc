@@ -42,3 +42,27 @@ CREATE TABLE IF NOT EXISTS onboarding_records (
     CONSTRAINT fk_onboarding_document_type FOREIGN KEY (document_type_id) REFERENCES document_types (id),
     CONSTRAINT ck_onboarding_confidence CHECK (ocr_confidence BETWEEN 0 AND 100)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+-- Why a record needs a human look (LOW_CONFIDENCE, INVALID_DOCUMENT_NUMBER, DUPLICATE_DOCUMENT, DUPLICATE_IMAGE). 1 record : N flags.
+CREATE TABLE IF NOT EXISTS onboarding_flags (
+    id             BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    onboarding_id  BIGINT UNSIGNED NOT NULL,
+    code           VARCHAR(40)     NOT NULL,
+    created_at     DATETIME        NOT NULL,
+    PRIMARY KEY (id),
+    KEY ix_flags_onboarding (onboarding_id),
+    CONSTRAINT fk_flags_onboarding FOREIGN KEY (onboarding_id) REFERENCES onboarding_records (id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+-- Operator decisions on records flagged NEEDS_REVIEW. Kept as history (the latest decision wins). 1 record : N reviews.
+CREATE TABLE IF NOT EXISTS onboarding_reviews (
+    id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    onboarding_id   BIGINT UNSIGNED NOT NULL,
+    decision        ENUM ('APPROVED', 'REJECTED') NOT NULL,
+    reviewer        VARCHAR(100)    NOT NULL,
+    review_comment  VARCHAR(500)    NULL,
+    created_at      DATETIME        NOT NULL,
+    PRIMARY KEY (id),
+    KEY ix_reviews_onboarding (onboarding_id),
+    CONSTRAINT fk_reviews_onboarding FOREIGN KEY (onboarding_id) REFERENCES onboarding_records (id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;

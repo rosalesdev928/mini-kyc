@@ -71,9 +71,20 @@ def test_sql_script_splitter_handles_delimiters():
 def test_real_sql_files_produce_expected_statements():
     schema = split_sql_script((ROOT / "database" / "schema.sql").read_text())
     procedures = split_sql_script((ROOT / "database" / "stored_procedures.sql").read_text())
-    assert sum(s.startswith("CREATE TABLE") for s in schema) == 3
-    assert sum(s.startswith("CREATE PROCEDURE") for s in procedures) == 3
+    assert sum(s.startswith("CREATE TABLE") for s in schema) == 5
+    assert sum(s.startswith("CREATE PROCEDURE") for s in procedures) == 7
     assert not any("DELIMITER" in s for s in procedures)
+
+
+def test_every_text_parameter_of_the_procedures_declares_its_collation():
+    """Regression test: managed MySQL defaults to utf8mb4_0900_ai_ci and mixing it with the tables'
+    utf8mb4_unicode_ci raised "Illegal mix of collations" (error 1267) in production."""
+    import re
+
+    procedures = (ROOT / "database" / "stored_procedures.sql").read_text()
+    text_params = re.findall(r"\bIN\s+\w+\s+((?:VARCHAR|CHAR)\(\d+\)[^,)\n]*)", procedures)
+    assert len(text_params) >= 12
+    assert all("COLLATE utf8mb4_unicode_ci" in param for param in text_params), text_params
 
 
 def test_prompts_md_lists_every_runtime_prompt():

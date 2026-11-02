@@ -7,7 +7,9 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 DocumentType = Literal["DNI", "CE", "PASSPORT", "OTHER"]
-OnboardingStatus = Literal["VERIFIED", "NEEDS_REVIEW"]
+# VERIFIED / NEEDS_REVIEW are set automatically; APPROVED / REJECTED are the operator's decision on a NEEDS_REVIEW record.
+OnboardingStatus = Literal["VERIFIED", "NEEDS_REVIEW", "APPROVED", "REJECTED"]
+ReviewDecision = Literal["APPROVED", "REJECTED"]
 
 
 # ---------- internal ----------
@@ -35,6 +37,21 @@ class NewOnboarding:
     status: str
     image_sha256: str
     original_filename: str | None
+    flags: tuple[str, ...] = ()  # why the record needs a human look (see FLAG_* constants)
+
+
+@dataclass(frozen=True)
+class DuplicateSignals:
+    """How many records of OTHER emails share the document number / image with a new upload."""
+
+    same_number_other_email: int = 0
+    same_image_other_email: int = 0
+
+
+FLAG_LOW_CONFIDENCE = "LOW_CONFIDENCE"
+FLAG_INVALID_DOCUMENT_NUMBER = "INVALID_DOCUMENT_NUMBER"
+FLAG_DUPLICATE_DOCUMENT = "DUPLICATE_DOCUMENT"
+FLAG_DUPLICATE_IMAGE = "DUPLICATE_IMAGE"
 
 
 # ---------- API ----------
@@ -47,9 +64,24 @@ class OnboardingResponse(BaseModel):
     full_name: str
     document_number: str
     ocr_confidence: float = Field(description="OCR confidence as a percentage (0-100).")
-    status: OnboardingStatus
+    status: OnboardingStatus = Field(
+        description="Automatic result (VERIFIED / NEEDS_REVIEW), or the operator's decision (APPROVED / REJECTED)."
+    )
+    flags: list[str] = Field(
+        default_factory=list,
+        description="Reasons for manual review: LOW_CONFIDENCE, INVALID_DOCUMENT_NUMBER, DUPLICATE_DOCUMENT, DUPLICATE_IMAGE.",
+    )
     original_filename: str | None = None
     created_at: datetime = Field(description="UTC timestamp of the registration.")
+    reviewed_by: str | None = Field(None, description="Operator who approved or rejected the record.")
+    review_comment: str | None = None
+    reviewed_at: datetime | None = Field(None, description="UTC timestamp of the operator's decision.")
+
+
+class ReviewRequest(BaseModel):
+    decision: ReviewDecision
+    reviewer: str = Field("operator", min_length=1, max_length=100, description="Name of the operator.")
+    comment: str | None = Field(None, max_length=500)
 
 
 class ErrorBody(BaseModel):

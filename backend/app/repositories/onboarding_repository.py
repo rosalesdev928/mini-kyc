@@ -7,8 +7,8 @@ from typing import Any
 import mysql.connector
 from mysql.connector import pooling
 
-from app.core.errors import DatabaseUnavailableError
-from app.schemas import NewOnboarding, OnboardingResponse
+from app.core.errors import ConflictError, DatabaseUnavailableError
+from app.schemas import DuplicateSignals, NewOnboarding, OnboardingResponse
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +31,35 @@ class OnboardingRepository:
                 new_record.original_filename,
             ),
             commit=True,
+        )
+        record = self._to_response(rows[0])
+        # Flags are written right after the record (one small procedure call each).
+        for code in new_record.flags:
+            self._call_procedure("sp_add_onboarding_flag", (record.id, code), commit=True)
+        return record.model_copy(update={"flags": list(new_record.flags)}) if new_record.flags else record
+
+    def find_duplicate_signals(
+        self, document_number: str, image_sha256: str, email: str
+    ) -> DuplicateSignals:
+        rows = self._call_procedure(
+            "sp_find_duplicate_signals", (document_number, image_sha256, email)
+        )
+        if not rows:
+            return DuplicateSignals()
+        return DuplicateSignals(
+            same_number_other_email=int(rows[0]["same_number_other_email"] or 0),
+            same_image_other_email=int(rows[0]["same_image_other_email"] or 0),
+        )
+
+    def list_pending_reviews(self, limit: int = 50) -> list[OnboardingResponse]:
+        rows = self._call_procedure("sp_list_pending_reviews", (limit,))
+        return [self._to_response(row) for row in rows]
+
+    def review(
+        self, onboarding_id: int, decision: str, reviewer: str, comment: str | None
+    ) -> OnboardingResponse:
+        rows = self._call_procedure(
+            "sp_review_onboarding", (onboarding_id, decision, reviewer, comment), commit=True
         )
         return self._to_response(rows[0])
 
@@ -77,6 +106,9 @@ class OnboardingRepository:
                 connection.commit()
             return rows
         except mysql.connector.Error as exc:
+            # SQLSTATE 45000 is how our procedures report a broken business rule (SIGNAL).
+            if getattr(exc, "sqlstate", None) == "45000":
+                raise ConflictError(getattr(exc, "msg", None) or "The operation is not allowed.") from exc
             logger.error("Stored procedure %s failed: %s", name, exc)
             raise DatabaseUnavailableError("The record could not be stored or read.") from exc
         finally:
@@ -84,6 +116,9 @@ class OnboardingRepository:
 
     @staticmethod
     def _to_response(row: dict[str, Any]) -> OnboardingResponse:
+        flags_text = _as_text(row.get("flags"))
+        review_decision = _as_text(row.get("review_decision"))
+        reviewed_at = row.get("reviewed_at")
         return OnboardingResponse(
             id=row["id"],
             email=row["email"],
@@ -91,7 +126,21 @@ class OnboardingRepository:
             full_name=row["full_name"],
             document_number=row["document_number"],
             ocr_confidence=float(row["ocr_confidence"]),
-            status=row["status"],
+            # the operator's decision, when there is one, replaces the automatic status
+            status=review_decision or row["status"],
+            flags=[code for code in (flags_text or "").split(",") if code],
             original_filename=row["original_filename"],
             created_at=row["created_at"].replace(tzinfo=timezone.utc),  # stored as UTC
+            reviewed_by=_as_text(row.get("reviewed_by")),
+            review_comment=_as_text(row.get("review_comment")),
+            reviewed_at=reviewed_at.replace(tzinfo=timezone.utc) if reviewed_at else None,
         )
+
+
+def _as_text(value: Any) -> str | None:
+    """MySQL can return GROUP_CONCAT / ENUM values as bytes depending on the connector build."""
+    if value is None:
+        return None
+    if isinstance(value, (bytes, bytearray)):
+        return bytes(value).decode("utf-8")
+    return str(value)
