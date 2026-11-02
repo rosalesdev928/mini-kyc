@@ -24,8 +24,19 @@ class OcrProvider(Protocol):
     def extract(self, image_bytes: bytes, mime_type: str) -> ExtractedDocument: ...
 
 
+class _GeminiResponseSchema(BaseModel):
+    """Plain schema sent to Gemini (no constraints or defaults, which the SDK may not convert)."""
+
+    is_identity_document: bool
+    is_legible: bool
+    document_type: Literal["DNI", "CE", "PASSPORT", "OTHER"]
+    full_name: str | None
+    document_number: str | None
+    confidence: float
+
+
 class _ModelOutput(BaseModel):
-    """Shape the model must return (also used as the JSON response schema)."""
+    """Strict validation of what the model returned."""
 
     is_identity_document: bool
     is_legible: bool
@@ -77,7 +88,7 @@ class GeminiOcrProvider:
                 config=types.GenerateContentConfig(
                     system_instruction=OCR_SYSTEM_INSTRUCTION,
                     response_mime_type="application/json",
-                    response_schema=_ModelOutput,
+                    response_schema=_GeminiResponseSchema,
                     temperature=0.0,
                 ),
             )
