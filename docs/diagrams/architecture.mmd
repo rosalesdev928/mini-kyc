@@ -1,0 +1,22 @@
+flowchart LR
+    subgraph Client
+        B[Browser<br/>React + Vite]
+    end
+    subgraph Railway["Railway (one app service + one MySQL service)"]
+        subgraph App["FastAPI app (Docker)"]
+            R[Routers<br/>HTTP only]
+            S[Services<br/>validation, OCR, business rules, FAQ RAG]
+            P[Repository<br/>calls stored procedures]
+            ST[Static files<br/>built React app]
+        end
+        D[(MySQL 8<br/>customers, document_types,<br/>onboarding_records + SPs)]
+    end
+    G[Google Gemini Flash API]
+
+    B -->|GET /| ST
+    B -->|REST multipart / JSON| R
+    R --> S
+    S --> P
+    P -->|CALL sp_*| D
+    S -->|image + prompt| G
+    ENV[/Environment variables<br/>GEMINI_API_KEY, DB_*/] -.-> App
