@@ -18,9 +18,13 @@ sequenceDiagram
         FE-->>U: Friendly error message
     else Valid image
         SVC->>OCR: Image + extraction prompt (JSON schema, temperature 0)
+        Note over SVC,OCR: Transient errors (429/5xx/timeouts) are retried with backoff,<br/>then a fallback model is tried
         OCR-->>SVC: name, document number, type, confidence, legibility
-        SVC->>SVC: Normalize number, decide VERIFIED / NEEDS_REVIEW
-        SVC->>DB: CALL sp_create_onboarding(...)
+        SVC->>SVC: Normalize the document number
+        SVC->>DB: CALL sp_find_duplicate_signals(...)
+        DB-->>SVC: Same document / photo under another email?
+        SVC->>SVC: No flags = VERIFIED, any flag = NEEDS_REVIEW
+        SVC->>DB: CALL sp_create_onboarding(...) + sp_add_onboarding_flag(...)
         DB-->>SVC: Stored record (id, UTC timestamp)
         SVC-->>API: OnboardingResponse
         API-->>FE: 201 Created + JSON

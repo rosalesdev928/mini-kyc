@@ -1,6 +1,8 @@
 erDiagram
     customers ||--o{ onboarding_records : "has many"
     document_types ||--o{ onboarding_records : "classifies"
+    onboarding_records ||--o{ onboarding_flags : "has reasons for review"
+    onboarding_records ||--o{ onboarding_reviews : "has operator decisions"
 
     customers {
         bigint id PK
@@ -22,5 +24,19 @@ erDiagram
         enum status "VERIFIED, NEEDS_REVIEW"
         char image_sha256
         varchar original_filename
+        datetime created_at "UTC"
+    }
+    onboarding_flags {
+        bigint id PK
+        bigint onboarding_id FK
+        varchar code "LOW_CONFIDENCE, INVALID_DOCUMENT_NUMBER, DUPLICATE_DOCUMENT, DUPLICATE_IMAGE"
+        datetime created_at "UTC"
+    }
+    onboarding_reviews {
+        bigint id PK
+        bigint onboarding_id FK
+        enum decision "APPROVED, REJECTED"
+        varchar reviewer
+        varchar review_comment
         datetime created_at "UTC"
     }

@@ -38,6 +38,41 @@ def upload_card(*, email="maria.fernandez@example.com", filled=True, loading=Fal
 </section>"""
 
 
+def review_note_card():
+    flags = '<ul class="flags"><li class="flag">Low reading confidence</li><li class="flag">This photo was already used with another email</li></ul>'
+    body = f"""
+<div class="result-grid"><img class="preview" src="data:image/png;base64,{SAMPLE}" alt="Uploaded document">
+<dl class="fields">
+<div><dt>Full name</dt><dd>Maria Fernandez Torres</dd></div>
+<div><dt>Document type</dt><dd>DNI</dd></div>
+<div><dt>Document no.</dt><dd>12345678</dd></div>
+<div><dt>OCR confidence</dt><dd>71.0%</dd></div>
+<div><dt>Registered</dt><dd>11/2/2026, 10:44:31 AM</dd></div></dl></div>
+<p class="note">An operator will review this record manually. Your data was saved.</p>{flags}"""
+    head = '<div class="card-heading"><h2 class="card-title">Extracted data</h2><span class="badge badge-warn">Needs review</span></div>'
+    return f'<section class="card result-card">{head}{body}</section>'
+
+
+def operator_card():
+    item = """
+<li class="review-item">
+  <div class="review-item-head"><strong>#12 · Maria Fernandez Torres</strong><span class="muted small">11/2/2026, 10:44:31 AM</span></div>
+  <dl class="review-fields">
+    <div><dt>Email address</dt><dd>maria.fernandez@example.com</dd></div>
+    <div><dt>Document type</dt><dd>DNI · 12345678</dd></div>
+    <div><dt>OCR confidence</dt><dd>71.0%</dd></div>
+  </dl>
+  <ul class="flags"><li class="flag">Low reading confidence</li><li class="flag">This photo was already used with another email</li></ul>
+  <div class="input">Comment (optional)</div>
+  <div class="review-buttons"><span class="button button-approve">Approve</span><span class="button button-reject">Reject</span></div>
+</li>"""
+    return f"""
+<section class="card review-card"><div class="card-heading review-heading"><h2 class="card-title">Manual review</h2>
+<div class="review-actions"><span class="button button-secondary">Refresh</span><span class="button button-secondary">Sign out</span></div></div>
+<span class="field-label">Your name</span><div class="input reviewer-input">Ana</div>
+<ul class="review-list">{item}</ul></section>"""
+
+
 def result_card(kind):
     head = '<div class="card-heading"><h2 class="card-title">Extracted data</h2>{badge}</div>'
     if kind == "idle":
@@ -60,11 +95,12 @@ def result_card(kind):
     return f'<section class="card result-card">{head.format(badge=chr(60) + "span class=" + chr(34) + "badge badge-ok" + chr(34) + ">Verified</span>")}{body}</section>'
 
 
-def screen(number, title, upload, result):
+def screen(number, title, upload, result, single=False):
+    layout = '<main class="layout layout-single">' + result + "</main>" if single else f'<main class="layout">{upload}{result}</main>'
     return f"""
 <section class="mock">
   <h1>{number}. {title}</h1>
-  <div class="frame">{TOPBAR}<main class="layout">{upload}{result}</main></div>
+  <div class="frame">{TOPBAR}{layout}</div>
 </section>"""
 
 
@@ -78,6 +114,8 @@ SCREENS = [
         upload_card(error="The photo is too blurry to read. Retake it in good light and keep the camera steady."),
         result_card("error"),
     ),
+    screen(5, "Result: flagged for manual review", upload_card(), review_note_card()),
+    screen(6, "Operator: manual review of flagged records", "", operator_card(), single=True),
 ]
 
 HTML = f"""<!doctype html>

@@ -2,14 +2,14 @@ flowchart LR
     subgraph Client
         B[Browser<br/>React + Vite]
     end
-    subgraph Railway["Railway (one app service + one MySQL service)"]
+    subgraph Cloud["Render (web service) + Aiven (MySQL)"]
         subgraph App["FastAPI app (Docker)"]
             R[Routers<br/>HTTP only]
-            S[Services<br/>validation, OCR, business rules, FAQ RAG]
+            S[Services<br/>validation, OCR with retry + fallback,<br/>business rules, operator review, FAQ RAG]
             P[Repository<br/>calls stored procedures]
             ST[Static files<br/>built React app]
         end
-        D[(MySQL 8<br/>customers, document_types,<br/>onboarding_records + SPs)]
+        D[(MySQL 8<br/>customers, document_types, onboarding_records,<br/>onboarding_flags, onboarding_reviews + SPs)]
     end
     G[Google Gemini Flash API]
 
@@ -19,4 +19,5 @@ flowchart LR
     S --> P
     P -->|CALL sp_*| D
     S -->|image + prompt| G
-    ENV[/Environment variables<br/>GEMINI_API_KEY, DB_*/] -.-> App
+    ENV[/Environment variables<br/>GEMINI_API_KEY, DB_*, REVIEW_API_KEY/] -.-> App
+    UP[UptimeRobot<br/>pings /api/v1/health] -.-> R

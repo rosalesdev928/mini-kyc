@@ -35,16 +35,27 @@ Read the code once before presenting, so that every answer below is something yo
 | Structured output (JSON schema, temperature 0) | Deterministic, parseable answers; malformed output becomes a controlled 422, never a crash. |
 | One Docker image serves API + frontend | Fewer moving parts to deploy and no CORS. |
 | API keys in environment variables | Nothing sensitive in git; `.env` is ignored and `.env.example` documents the variables. |
+| Retry + fallback model for Gemini | The free tier returns `503 high demand` and timeouts. Transient errors are retried with exponential backoff, then a second model is tried, inside a total time budget (so the host's request limit is never hit). Permanent errors (400/401/403) are not retried. |
+| Flags instead of a single status | A record can need review for several reasons (low confidence, malformed number, same document or photo under another email). Each reason is stored in `onboarding_flags` (1 record : N flags), so the operator sees *why*. |
+| Operator decisions as history | `onboarding_reviews` is append-only (1 record : N reviews); the latest decision wins. The review procedure locks the row, checks it is still pending and inserts, so two operators cannot both decide. |
+| Review endpoints behind a key, disabled by default | `REVIEW_API_KEY` empty means the endpoints answer `503 REVIEW_DISABLED`, so a forgotten variable never exposes them. Compared with `hmac.compare_digest`. In a real system: OIDC/JWT and roles. |
+| Explicit collation in the stored procedures | Aiven's MySQL defaults to `utf8mb4_0900_ai_ci` while the tables use `utf8mb4_unicode_ci`; comparing a parameter with a column raised error 1267 in production. Parameters now declare the collation, with a regression test. |
+| CI with a real MySQL | GitHub Actions runs the whole suite against a MySQL 8 container, including integration tests of the migrations and the procedures. |
+| Request id in every log line | Makes it possible to follow one request across the middleware, the service and the repository (`X-Request-ID`). |
 
 ## 4. "Hardest technical challenge" - pick one you actually understood
 
 * **Blur detection that does not depend on the AI.** Pillow's convolution filter leaves the outermost pixel ring unfiltered, which added a constant error to the sharpness score and made blurry images look sharper than they were. Cropping that ring fixed it, and I calibrated the threshold on synthetic sharp and blurred images.
 * **Safe handling of untrusted uploads.** Reading only `max_size + 1` bytes to detect oversized files, detecting type by content, and mapping every failure to a specific HTTP status.
 * **Making AI output reliable.** JSON schema + temperature 0 + strict parsing + fallbacks to a controlled error.
+* **Production-only failures.** Two bugs only appeared after deploying: Gemini timing out at 30 s (fixed with a longer timeout, then with retries and a fallback model) and MySQL error 1267 "Illegal mix of collations" (the managed database had a different default collation; fixed in the procedures and covered by a regression test). Reading the logs, reproducing and adding a test for each one is a good story.
 
 ## 5. Questions to expect
 
-* *What happens if Gemini is down or rate-limited?* -> `503 OCR_RATE_LIMITED` / `502 OCR_PROVIDER_ERROR`; the user gets a retry message and nothing is stored.
+* *What happens if Gemini is down or rate-limited?* -> It is retried with backoff, then a fallback model is tried; if everything fails the user gets `503 OCR_RATE_LIMITED` / `502 OCR_PROVIDER_ERROR` and nothing is stored.
+* *What if the free server is asleep?* -> The UI pings `/health`, shows "waking up the server" if it is slow, and UptimeRobot keeps it awake in practice.
+* *Why is a record `NEEDS_REVIEW`?* -> The `flags` field says why (low confidence, bad number format, duplicate document or photo under another email). An operator approves or rejects it from the Operator screen.
+* *Demo tip:* uploading the same photo with a *different* email is flagged as `DUPLICATE_IMAGE` on purpose (possible identity reuse). Use the same email to show `VERIFIED`, or a second email to show the review flow.
 * *How would you scale it?* -> Stateless API (horizontal scaling), connection pool, async job queue for OCR, object storage if images must be kept.
 * *How would you improve accuracy?* -> Cross-check with a second provider, validate DNI check digit, compare against a registry (RENIEC), human-in-the-loop for low confidence.
 * *Security?* -> Add authentication, rate limiting, HTTPS only, encryption at rest, audit log, retention policy for PII.

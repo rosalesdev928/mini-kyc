@@ -1,0 +1,32 @@
+sequenceDiagram
+    autonumber
+    actor U as User
+    participant FE as Frontend (React)
+    participant API as API (FastAPI)
+    participant SVC as OnboardingService
+    participant OCR as AI/OCR (Gemini Flash)
+    participant DB as MySQL (stored procedures)
+
+    U->>FE: Enter email + choose ID image
+    FE->>FE: Validate email, type (JPG/PNG), size (5 MB)
+    FE->>API: POST /api/v1/onboarding (multipart/form-data)
+    API->>SVC: process(email, filename, bytes)
+    SVC->>SVC: Validate email and image (magic bytes, size, resolution, blur)
+    alt Invalid input
+        SVC-->>API: AppError (415 / 413 / 422)
+        API-->>FE: JSON {error: {code, message}}
+        FE-->>U: Friendly error message
+    else Valid image
+        SVC->>OCR: Image + extraction prompt (JSON schema, temperature 0)
+        Note over SVC,OCR: Transient errors (429/5xx/timeouts) are retried with backoff,<br/>then a fallback model is tried
+        OCR-->>SVC: name, document number, type, confidence, legibility
+        SVC->>SVC: Normalize the document number
+        SVC->>DB: CALL sp_find_duplicate_signals(...)
+        DB-->>SVC: Same document / photo under another email?
+        SVC->>SVC: No flags = VERIFIED, any flag = NEEDS_REVIEW
+        SVC->>DB: CALL sp_create_onboarding(...) + sp_add_onboarding_flag(...)
+        DB-->>SVC: Stored record (id, UTC timestamp)
+        SVC-->>API: OnboardingResponse
+        API-->>FE: 201 Created + JSON
+        FE-->>U: Extracted data, confidence and status
+    end

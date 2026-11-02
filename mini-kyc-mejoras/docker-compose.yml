@@ -1,0 +1,41 @@
+# Local full stack: MySQL + app (API and built frontend on http://localhost:8000)
+#   cp .env.example .env   # then set GEMINI_API_KEY
+#   docker compose up --build
+services:
+  db:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-change-me-locally}
+      MYSQL_DATABASE: ${DB_NAME:-mini_kyc}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_HOST: db
+      DB_PORT: "3306"
+      DB_USER: root
+      DB_PASSWORD: ${DB_PASSWORD:-change-me-locally}
+      DB_NAME: ${DB_NAME:-mini_kyc}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-flash-latest}
+      GEMINI_FALLBACK_MODEL: ${GEMINI_FALLBACK_MODEL:-gemini-3.6-flash}
+      REVIEW_API_KEY: ${REVIEW_API_KEY:-}
+      OCR_PROVIDER: ${OCR_PROVIDER:-gemini}
+      AUTO_MIGRATE: "true"
+    ports:
+      - "8000:8000"
+
+volumes:
+  mysql_data:

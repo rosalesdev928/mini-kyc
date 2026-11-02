@@ -20,8 +20,16 @@ User -> Frontend -> API -> AI/OCR service -> Database
 1. The React UI validates the email and the file (JPG/PNG, max 5 MB) and sends `multipart/form-data`.
 2. The API validates the image by **content** (magic bytes, size, resolution and a blur check), so a renamed PDF or a blurry photo is rejected with a clear error before any paid AI call is made.
 3. Gemini Flash reads the image and returns structured JSON: full name, document number, document type, legibility and a confidence score.
-4. The service normalizes the data, marks the record `VERIFIED` or `NEEDS_REVIEW`, and stores it with `CALL sp_create_onboarding(...)`.
-5. The UI shows the extracted data, the OCR confidence and the registration timestamp.
+4. The service normalizes the data and looks for review reasons (low confidence, malformed number, same document or photo registered under another email). No reasons = `VERIFIED`; any reason = `NEEDS_REVIEW`. The record is stored with `CALL sp_create_onboarding(...)`.
+5. The UI shows the extracted data, the OCR confidence, the status, the reasons for review and the registration timestamp.
+6. An operator can approve or reject the records flagged `NEEDS_REVIEW` from the **Operator** screen.
+
+### Reliability features
+
+* **Gemini contingency plan**: transient errors (429, 5xx, timeouts) are retried with exponential backoff, then a fallback model is tried, all inside a total time budget so the hosting request limit is never exceeded. If everything fails the user gets a controlled `502/503` and nothing is stored.
+* **Cold-start notice**: free hosting sleeps after 15 minutes without traffic; the UI detects a slow server and says it is waking up instead of looking frozen.
+* **Mobile friendly**: a "Take a photo" button opens the camera, and very large phone photos are shrunk in the browser before upload.
+* **Request ids**: every response has an `X-Request-ID` header, and the same id appears in every log line of that request.
 
 Diagrams: [sequence](docs/diagrams/sequence.png) · [architecture](docs/diagrams/architecture.png) · [data model](docs/diagrams/data-model.png)
 (Mermaid sources are in `docs/diagrams/*.mmd`). UI mockup: [docs/mockup.html](docs/mockup.html) / [docs/mockup.png](docs/mockup.png).
@@ -105,6 +113,11 @@ Regenerate them with `python scripts/generate_samples.py`.
 |---|---|---|
 | `GEMINI_API_KEY` | - | Google AI Studio key. **Never commit it.** |
 | `GEMINI_MODEL` | `gemini-flash-latest` | Any Gemini Flash model your key can use (the live app uses `gemini-3.5-flash-lite`). |
+| `GEMINI_FALLBACK_MODEL` | `gemini-3.6-flash` | Tried when the primary model keeps failing. Empty disables the fallback. |
+| `GEMINI_TIMEOUT_SECONDS` | `40` | Timeout of each Gemini call. |
+| `GEMINI_MAX_ATTEMPTS` | `3` | Attempts per model for transient errors (backoff 1 s, 2 s, 4 s...). |
+| `REVIEW_API_KEY` | empty | Secret for the operator endpoints (`X-Review-Key` header). **Empty = operator review is disabled.** |
+| `DUPLICATE_CHECK_ENABLED` | `true` | Flag the same document number / photo registered under another email. |
 | `OCR_PROVIDER` | `gemini` | `gemini` or `mock` (demo/tests only). |
 | `DB_HOST` `DB_PORT` `DB_USER` `DB_PASSWORD` `DB_NAME` | localhost / 3306 / root / - / mini_kyc | MySQL connection. Railway's `MYSQLHOST`, `MYSQLPORT`... names are also accepted. |
 | `AUTO_MIGRATE` | `true` | Apply `database/*.sql` on startup (idempotent). |
@@ -122,6 +135,8 @@ Interactive documentation: **`/docs`** (Swagger UI) and `/openapi.json`.
 | `GET` | `/api/v1/onboarding/{id}` | Get a record. |
 | `GET` | `/api/v1/onboarding?email=...` | List records of an email. |
 | `POST` | `/api/v1/chat` | FAQ chatbot (RAG): `{"question": "..."}`. |
+| `GET` | `/api/v1/reviews/pending` | Operator: records waiting for a decision. Needs the `X-Review-Key` header. |
+| `POST` | `/api/v1/reviews/{id}` | Operator: `{"decision": "APPROVED" \| "REJECTED", "reviewer": "...", "comment": "..."}`. Needs `X-Review-Key`. |
 | `GET` | `/api/v1/health` | Service and database status. |
 
 Example:
@@ -143,11 +158,15 @@ Every error is JSON in the same shape, `{"error": {"code": "...", "message": "..
 | 422 | `INVALID_EMAIL` / `VALIDATION_ERROR` | Bad email or missing fields |
 | 422 | `BLURRY_IMAGE` / `IMAGE_TOO_SMALL` / `INVALID_IMAGE` | Image cannot be read reliably |
 | 422 | `NOT_AN_IDENTITY_DOCUMENT` / `EXTRACTION_FAILED` | The AI could not find the name and number |
-| 502 / 503 | `OCR_PROVIDER_ERROR` / `OCR_RATE_LIMITED` / `OCR_NOT_CONFIGURED` / `DATABASE_UNAVAILABLE` | Upstream service problems |
+| 401 | `UNAUTHORIZED` | Missing or wrong `X-Review-Key` on the operator endpoints |
+| 404 | `NOT_FOUND` | Unknown record id |
+| 409 | `NOT_PENDING_REVIEW` / `CONFLICT` | The record is not waiting for review (already decided, or already `VERIFIED`) |
+| 502 / 503 | `OCR_PROVIDER_ERROR` / `OCR_RATE_LIMITED` / `OCR_NOT_CONFIGURED` / `REVIEW_DISABLED` / `DATABASE_UNAVAILABLE` | Upstream service problems, or operator review not enabled |
 
 ## Data and privacy
 
-* Stored: email, extracted name and document number, document type, OCR confidence, status, a SHA-256 hash of the image, the original file name and a UTC timestamp.
+* Stored: email, extracted name and document number, document type, OCR confidence, status, the reasons for review, the operator's decision (name, comment, time), a SHA-256 hash of the image, the original file name and a UTC timestamp.
+* The history shown in the UI masks the document number (only the last 3 characters are visible).
 * **The image itself is not stored.** It is only sent to the AI service to read the text.
 * The OCR confidence is the **model's own estimate**, not a calibrated probability. That is why low-confidence records are flagged for manual review instead of being rejected.
 * Secrets are read from environment variables only; `.env` is git-ignored.
@@ -160,8 +179,22 @@ cd backend
 pytest
 ```
 
-The suite covers image validation (type, size, resolution, blur), the onboarding flow (statuses, rejection paths), OCR output parsing,
-the FAQ retrieval, the SQL script splitter, the API contract (status codes and error bodies) and a check that `PROMPTS.md` contains every runtime prompt.
+The suite covers image validation (type, size, resolution, blur), the onboarding flow (statuses, rejection paths, review flags, duplicates),
+the operator review rules, the Gemini retry / fallback / time-budget logic, OCR output parsing, the FAQ retrieval, the SQL script splitter
+(including a regression test for the collation bug), the API contract (status codes, error bodies, request ids, operator authentication) and
+a check that `PROMPTS.md` contains every runtime prompt. None of them needs the network.
+
+**Integration tests against a real MySQL 8** (`tests/test_mysql_integration.py`) run the migrations, the stored procedures and the whole service.
+They are skipped unless `RUN_DB_TESTS=1`:
+
+```bash
+RUN_DB_TESTS=1 DB_HOST=127.0.0.1 DB_USER=root DB_PASSWORD=... DB_NAME=mini_kyc pytest tests/test_mysql_integration.py
+```
+
+### Continuous integration
+
+`.github/workflows/ci.yml` runs on every push and pull request: the full backend suite against a MySQL 8 service container,
+the frontend production build, and the Docker image build.
 
 ## Deploy (free tier: Render + Aiven)
 
@@ -178,7 +211,8 @@ so the first request after a pause can take up to a minute.
 
 ## Known limitations / next steps
 
-* No authentication or rate limiting (it is a PoC); add both before any real use.
+* No end-user authentication or rate limiting (it is a PoC). The operator endpoints are protected only by a shared key; use real authentication and roles before any real use.
+* `GET /api/v1/onboarding?email=...` returns the full records of an email without authentication; the UI masks document numbers, but the API does not.
 * The blur check uses a sharpness heuristic; very sparse documents can score low. Tune `BLUR_THRESHOLD`.
 * Gemini model names change over time; if a model is retired, set `GEMINI_MODEL` to a current Flash model.
 * Chatbot retrieval is TF-IDF over a small FAQ. For a larger knowledge base, replace it with embeddings and a vector store.

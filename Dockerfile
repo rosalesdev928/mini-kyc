@@ -1,5 +1,5 @@
 # Multi-stage build: React frontend -> static files served by the FastAPI backend.
-# One deployable image, which keeps the Railway setup to "app + MySQL".
+# One deployable image, which keeps the hosting setup to "app + MySQL".
 
 FROM node:22-alpine AS frontend-build
 WORKDIR /frontend
@@ -24,5 +24,5 @@ RUN useradd --create-home appuser
 USER appuser
 
 EXPOSE 8000
-# Railway injects $PORT; default to 8000 locally.
+# Hosting platforms (Render, Railway) inject $PORT; default to 8000 locally.
 CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
