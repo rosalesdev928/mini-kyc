@@ -1,6 +1,9 @@
 """FastAPI application factory."""
 
 import logging
+import re
+import time
+import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -13,7 +16,8 @@ from fastapi.staticfiles import StaticFiles
 from app.core.config import Settings, get_settings
 from app.core.database import run_migrations
 from app.core.errors import AppError
-from app.routers import chat, health, onboarding
+from app.core.logging_config import configure_logging, request_id_var
+from app.routers import chat, health, onboarding, review
 
 logger = logging.getLogger("mini_kyc")
 
@@ -27,7 +31,7 @@ def _error_response(status_code: int, code: str, message: str, details: object |
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    configure_logging()
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
@@ -56,6 +60,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             allow_headers=["*"],
         )
 
+    @app.middleware("http")
+    async def add_request_id(request: Request, call_next):
+        """Tag the request with an id (reuses X-Request-ID if the client sends one) and log its outcome."""
+        supplied = re.sub(r"[^A-Za-z0-9._-]", "", request.headers.get("x-request-id", ""))[:64]
+        request_id = supplied or uuid.uuid4().hex[:12]
+        token = request_id_var.set(request_id)
+        started = time.perf_counter()
+        try:
+            response = await call_next(request)
+            if request.url.path != "/api/v1/health":  # the uptime monitor calls it every 5 minutes
+                elapsed_ms = (time.perf_counter() - started) * 1000
+                logger.info(
+                    "%s %s -> %s (%.0f ms)", request.method, request.url.path, response.status_code, elapsed_ms
+                )
+            response.headers["X-Request-ID"] = request_id
+            return response
+        finally:
+            request_id_var.reset(token)
+
     @app.exception_handler(AppError)
     async def handle_app_error(_: Request, exc: AppError):
         return _error_response(exc.status_code, exc.code, exc.message, exc.details)
@@ -75,6 +98,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(health.router)
     app.include_router(onboarding.router)
+    app.include_router(review.router)
     app.include_router(chat.router)
 
     _mount_frontend(app, settings)
