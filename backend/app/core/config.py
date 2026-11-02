@@ -25,8 +25,16 @@ class Settings(BaseSettings):
     ocr_provider: str = "gemini"  # "gemini" or "mock" (mock is for local demos and tests only)
     gemini_api_key: str = ""
     gemini_model: str = "gemini-flash-latest"
-    gemini_timeout_seconds: int = 30
+    gemini_fallback_model: str = "gemini-3.6-flash"  # used when the primary model keeps failing; "" disables it
+    gemini_timeout_seconds: int = 40  # per attempt
+    gemini_max_attempts: int = 3  # per model, for transient errors (429/5xx/timeouts)
+    gemini_retry_base_seconds: float = 1.0  # exponential backoff: 1s, 2s, 4s...
+    gemini_total_budget_seconds: float = 80.0  # no new attempt starts after this (hosting request limit)
     min_verified_confidence: float = 0.85
+    duplicate_check_enabled: bool = True  # flag the same document/photo registered under another email
+
+    # --- Operator review (approve / reject records flagged NEEDS_REVIEW) ---
+    review_api_key: str = ""  # empty = review endpoints are disabled (secure by default)
 
     # --- Upload validation ---
     max_upload_bytes: int = 5 * 1024 * 1024

@@ -3,12 +3,15 @@
 import json
 import logging
 import re
+import time
+from collections.abc import Callable
 from typing import Literal, Protocol
 
 from pydantic import BaseModel, Field, ValidationError
 
 from app.core.config import Settings
 from app.core.errors import (
+    AppError,
     ExtractionFailedError,
     OcrProviderError,
     OcrRateLimitedError,
@@ -68,40 +71,105 @@ def parse_model_output(raw_text: str) -> ExtractedDocument:
     )
 
 
+# Transient failures worth retrying: rate limit, server errors and gateway timeouts.
+_RETRYABLE_STATUSES = frozenset({429, 500, 502, 503, 504})
+_MODEL_NOT_FOUND = 404
+
+
 class GeminiOcrProvider:
-    def __init__(self, settings: Settings, client=None):
+    """Gemini implementation with retries (exponential backoff) and a fallback model.
+
+    Contingency plan for the free tier, where "503 high demand" and timeouts happen:
+    1. retry the primary model on transient errors,
+    2. then try the fallback model,
+    3. stop when the total time budget is spent, so the hosting request limit is never hit.
+    """
+
+    def __init__(
+        self,
+        settings: Settings,
+        client=None,
+        *,
+        sleep: Callable[[float], None] = time.sleep,
+        clock: Callable[[], float] = time.monotonic,
+    ):
         self._settings = settings
         self._client = client
+        self._sleep = sleep
+        self._clock = clock
 
     def extract(self, image_bytes: bytes, mime_type: str) -> ExtractedDocument:
         from google.genai import types
 
         client = self._client or create_gemini_client(self._settings)
         self._client = client
-        try:
-            response = client.models.generate_content(
-                model=self._settings.gemini_model,
-                contents=[
-                    types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
-                    OCR_USER_PROMPT,
-                ],
-                config=types.GenerateContentConfig(
-                    system_instruction=OCR_SYSTEM_INSTRUCTION,
-                    response_mime_type="application/json",
-                    response_schema=_GeminiResponseSchema,
-                    temperature=0.0,
-                ),
-            )
-        except Exception as exc:  # SDK errors vary by version; map them by status code
-            status = getattr(exc, "code", None)
-            logger.error("Gemini request failed (status=%s): %s", status, exc)
-            if status == 429:
-                raise OcrRateLimitedError(
-                    "The AI service is busy right now. Please try again in a minute."
-                ) from exc
-            raise OcrProviderError("The AI service could not process the document.") from exc
 
-        return parse_model_output(response.text or "")
+        deadline = self._clock() + self._settings.gemini_total_budget_seconds
+        last_status: int | None = None
+        failures = 0
+
+        for model in self._models():
+            for attempt in range(1, max(1, self._settings.gemini_max_attempts) + 1):
+                try:
+                    response = client.models.generate_content(
+                        model=model,
+                        contents=[
+                            types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
+                            OCR_USER_PROMPT,
+                        ],
+                        config=types.GenerateContentConfig(
+                            system_instruction=OCR_SYSTEM_INSTRUCTION,
+                            response_mime_type="application/json",
+                            response_schema=_GeminiResponseSchema,
+                            temperature=0.0,
+                        ),
+                    )
+                    document = parse_model_output(response.text or "")
+                except AppError:
+                    raise  # e.g. an unreadable answer: a controlled error, retrying will not help
+                except Exception as exc:  # SDK errors vary by version; map them by status code
+                    failures += 1
+                    last_status = getattr(exc, "code", None)
+                    logger.warning(
+                        "Gemini attempt %d/%d with model %s failed (status=%s): %s",
+                        attempt, self._settings.gemini_max_attempts, model, last_status, exc,
+                    )
+                    if last_status == _MODEL_NOT_FOUND:
+                        break  # this model name is not available to the key: go to the next model
+                    if last_status is not None and last_status not in _RETRYABLE_STATUSES:
+                        raise OcrProviderError("The AI service could not process the document.") from exc
+                    delay = self._settings.gemini_retry_base_seconds * (2 ** (attempt - 1))
+                    if attempt == self._settings.gemini_max_attempts:
+                        break  # attempts for this model are spent: go to the next model
+                    if self._clock() + delay >= deadline:
+                        return self._give_up(last_status, failures)
+                    self._sleep(delay)
+                    continue
+
+                if failures:
+                    logger.info("OCR succeeded with model %s after %d failed attempt(s).", model, failures)
+                return document
+
+            if self._clock() >= deadline:
+                break
+
+        return self._give_up(last_status, failures)
+
+    def _models(self) -> list[str]:
+        models = [self._settings.gemini_model]
+        fallback = self._settings.gemini_fallback_model.strip()
+        if fallback and fallback not in models:
+            models.append(fallback)
+        return models
+
+    @staticmethod
+    def _give_up(last_status: int | None, failures: int):
+        logger.error("Gemini failed after %d attempt(s) (last status=%s).", failures, last_status)
+        if last_status == 429:
+            raise OcrRateLimitedError("The AI service is busy right now. Please try again in a minute.")
+        raise OcrProviderError(
+            "The AI service is not responding right now. Please try again in a minute."
+        )
 
 
 class MockOcrProvider:
