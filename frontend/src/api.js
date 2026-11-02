@@ -33,6 +33,29 @@ async function request(path, options) {
   }
 }
 
+/** Health check used to detect a sleeping server (free hosting). `signal` lets the caller cancel it. */
+export function getHealth(signal) {
+  return request("/api/v1/health", { signal });
+}
+
+export function listByEmail(email) {
+  return request(`/api/v1/onboarding?email=${encodeURIComponent(email)}`);
+}
+
+// ---- operator review (protected with the X-Review-Key header) ----
+
+export function listPendingReviews(key) {
+  return request("/api/v1/reviews/pending", { headers: { "X-Review-Key": key } });
+}
+
+export function reviewRecord(key, id, { decision, reviewer, comment }) {
+  return request(`/api/v1/reviews/${id}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Review-Key": key },
+    body: JSON.stringify({ decision, reviewer, comment: comment || null }),
+  });
+}
+
 export function createOnboarding({ email, file }) {
   const form = new FormData();
   form.append("email", email);

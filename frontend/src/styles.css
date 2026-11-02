@@ -255,6 +255,11 @@ body {
   color: var(--warn);
 }
 
+.badge-danger {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
 .result-grid {
   display: grid;
   gap: 1rem;
@@ -475,4 +480,225 @@ body {
   width: auto;
   margin-top: 0;
   padding: 0.5rem 0.9rem;
+}
+
+/* ---------- operator button (top bar) ---------- */
+.operator {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.9rem;
+  border-radius: 8px;
+  padding: 0.3rem 0.6rem;
+  cursor: pointer;
+}
+
+.operator:hover,
+.operator[aria-pressed="true"] {
+  border-color: var(--border);
+  background: var(--blue-soft);
+  color: var(--navy);
+}
+
+.operator:focus-visible,
+.lang-toggle:focus-visible {
+  outline: 3px solid rgba(11, 132, 198, 0.35);
+  outline-offset: 1px;
+}
+
+/* ---------- layout helpers ---------- */
+.column {
+  display: grid;
+  gap: 1.25rem;
+  min-width: 0;
+}
+
+.layout-single {
+  display: block;
+  max-width: 760px;
+}
+
+.card {
+  box-shadow: 0 1px 2px rgba(11, 58, 91, 0.05);
+}
+
+.button {
+  transition: filter 0.15s, transform 0.05s;
+}
+
+.button:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+
+.button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.button-camera {
+  width: 100%;
+}
+
+/* ---------- server banner ---------- */
+.banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  padding: 0.6rem 1rem;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.banner-info {
+  background: var(--blue-soft);
+  color: var(--navy);
+}
+
+.banner-error {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.spinner-dark {
+  border-color: rgba(11, 58, 91, 0.25);
+  border-top-color: var(--navy);
+}
+
+.slow-note {
+  max-width: 34ch;
+}
+
+/* ---------- review reasons ---------- */
+.flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.flag {
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  background: var(--warn-bg);
+  color: var(--warn);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+/* ---------- history ---------- */
+.history-email {
+  margin: -0.6rem 0 0.4rem;
+}
+
+.history-list,
+.review-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.history-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.history-item:last-child {
+  border-bottom: 0;
+}
+
+.history-item > div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* ---------- operator review ---------- */
+.review-heading {
+  justify-content: space-between;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.review-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.review-actions .button {
+  margin-top: 0;
+}
+
+.reviewer-input {
+  max-width: 260px;
+}
+
+.notice {
+  margin: 0.9rem 0 0;
+  padding: 0.65rem 0.8rem;
+  border-radius: 8px;
+  background: var(--ok-bg);
+  color: var(--ok);
+  font-size: 0.9rem;
+}
+
+.review-item {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.review-item-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.review-fields {
+  display: grid;
+  gap: 0.25rem 1.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  margin: 0;
+}
+
+.review-fields dt {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.review-fields dd {
+  margin: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.review-item .flags {
+  margin: 0;
+}
+
+.review-buttons {
+  display: flex;
+  gap: 0.6rem;
+}
+
+.review-buttons .button {
+  margin-top: 0;
+}
+
+.button-approve {
+  background: var(--ok);
+}
+
+.button-reject {
+  background: var(--danger);
 }

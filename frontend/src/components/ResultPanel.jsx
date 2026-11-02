@@ -1,21 +1,20 @@
-export default function ResultPanel({ t, lang, status, result, previewUrl, onReset }) {
+import { FlagChips, StatusBadge } from "./common.jsx";
+
+export default function ResultPanel({ t, lang, status, result, previewUrl, slow, onReset }) {
   return (
     <section className="card result-card" aria-live="polite" aria-labelledby="result-title">
       <div className="card-heading">
         <h2 id="result-title" className="card-title">
           {t.extractedTitle}
         </h2>
-        {status === "success" && result && (
-          <span className={`badge ${result.status === "VERIFIED" ? "badge-ok" : "badge-warn"}`}>
-            {result.status === "VERIFIED" ? t.verified : t.needsReview}
-          </span>
-        )}
+        {status === "success" && result && <StatusBadge t={t} status={result.status} />}
       </div>
 
       {status === "loading" && (
         <div className="placeholder">
           <span className="spinner spinner-large" aria-hidden="true" />
           <p>{t.loadingText}</p>
+          {slow && <p className="muted small slow-note">{t.slowText}</p>}
         </div>
       )}
 
@@ -59,6 +58,7 @@ export default function ResultPanel({ t, lang, status, result, previewUrl, onRes
           </div>
 
           <p className="note">{result.status === "VERIFIED" ? t.aiNote : t.reviewNote}</p>
+          <FlagChips t={t} flags={result.flags} />
           <button type="button" className="button button-secondary" onClick={onReset}>
             {t.tryAnother}
           </button>
