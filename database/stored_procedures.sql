@@ -1,6 +1,8 @@
 -- Mini KYC - stored procedures (MySQL 8+)
 -- The application persists and reads onboarding data ONLY through these procedures.
 -- Idempotent: each procedure is dropped and recreated.
+-- String parameters declare the table collation explicitly: managed MySQL services (e.g. Aiven)
+-- default to utf8mb4_0900_ai_ci, which otherwise raises "Illegal mix of collations" (error 1267).
 -- Run with the mysql CLI:  mysql -u root -p mini_kyc < database/stored_procedures.sql
 
 DELIMITER $$
@@ -24,7 +26,7 @@ BEGIN
 END$$
 
 DROP PROCEDURE IF EXISTS sp_list_onboardings_by_email$$
-CREATE PROCEDURE sp_list_onboardings_by_email(IN p_email VARCHAR(254), IN p_limit INT)
+CREATE PROCEDURE sp_list_onboardings_by_email(IN p_email VARCHAR(254) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci, IN p_limit INT)
 BEGIN
     SELECT o.id,
            c.email,
@@ -45,14 +47,14 @@ END$$
 
 DROP PROCEDURE IF EXISTS sp_create_onboarding$$
 CREATE PROCEDURE sp_create_onboarding(
-    IN p_email              VARCHAR(254),
-    IN p_document_type_code VARCHAR(20),
-    IN p_full_name          VARCHAR(200),
-    IN p_document_number    VARCHAR(30),
+    IN p_email              VARCHAR(254) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+    IN p_document_type_code VARCHAR(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+    IN p_full_name          VARCHAR(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+    IN p_document_number    VARCHAR(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
     IN p_ocr_confidence     DECIMAL(5, 2),
-    IN p_status             VARCHAR(20),
-    IN p_image_sha256       CHAR(64),
-    IN p_original_filename  VARCHAR(255)
+    IN p_status             VARCHAR(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+    IN p_image_sha256       CHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+    IN p_original_filename  VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
 )
 BEGIN
     DECLARE v_customer_id      BIGINT UNSIGNED;
