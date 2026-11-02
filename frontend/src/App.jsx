@@ -1,14 +1,33 @@
 import { useCallback, useEffect, useState } from "react";
 import { createOnboarding, listByEmail } from "./api.js";
 import { errorMessage, messages } from "./i18n.js";
+import { writeStored } from "./storage.js";
 import UploadPanel from "./components/UploadPanel.jsx";
 import ResultPanel from "./components/ResultPanel.jsx";
 import ChatWidget from "./components/ChatWidget.jsx";
 import HistoryPanel from "./components/HistoryPanel.jsx";
-import ReviewPanel from "./components/ReviewPanel.jsx";
+import AdminPanel from "./components/admin/AdminPanel.jsx";
+import Logo from "./components/Logo.jsx";
+import PrivacyNotice from "./components/PrivacyNotice.jsx";
 import ServerBanner from "./components/ServerBanner.jsx";
 
 const SLOW_AFTER_MS = 10000; // after this the UI explains that the AI is busy and retrying
+
+/** Light / dark theme. theme-init.js sets the first value before the first paint; here we only toggle and remember it. */
+function useTheme() {
+  const [theme, setTheme] = useState(() => document.documentElement.getAttribute("data-theme") || "light");
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+  }, [theme]);
+  const toggle = useCallback(() => {
+    setTheme((current) => {
+      const next = current === "dark" ? "light" : "dark";
+      writeStored("local", "theme", next);
+      return next;
+    });
+  }, []);
+  return [theme, toggle];
+}
 
 export default function App() {
   const [lang, setLang] = useState("en");
@@ -17,7 +36,8 @@ export default function App() {
   const [errorState, setErrorState] = useState(null); // { code, message }
   const [file, setFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
-  const [view, setView] = useState("onboarding"); // onboarding | operator
+  const [view, setView] = useState("onboarding"); // onboarding | admin
+  const [theme, toggleTheme] = useTheme();
   const [slow, setSlow] = useState(false);
   const [history, setHistory] = useState({ email: "", records: [] });
 
@@ -89,8 +109,11 @@ export default function App() {
     <div className="app">
       <header className="topbar">
         <div className="brand">
-          <span className="brand-mark" aria-hidden="true" />
-          <span className="brand-name">{t.appName}</span>
+          <Logo />
+          <span className="brand-text">
+            <span className="brand-name">{t.brandName}</span>
+            <span className="brand-tagline">{t.brandTagline}</span>
+          </span>
         </div>
         <div className="topbar-actions">
           <button type="button" className="lang-toggle" onClick={() => setLang(lang === "en" ? "es" : "en")}>
@@ -98,20 +121,30 @@ export default function App() {
           </button>
           <button
             type="button"
-            className="operator"
-            aria-pressed={view === "operator"}
-            onClick={() => setView(view === "operator" ? "onboarding" : "operator")}
+            className="theme-toggle"
+            onClick={toggleTheme}
+            aria-label={theme === "dark" ? t.themeToLight : t.themeToDark}
+            title={theme === "dark" ? t.themeToLight : t.themeToDark}
           >
-            {view === "operator" ? t.backToOnboarding : t.openOperator}
+            <span aria-hidden="true">{theme === "dark" ? "☀" : "☾"}</span>
+          </button>
+          <button
+            type="button"
+            className="operator"
+            aria-pressed={view === "admin"}
+            onClick={() => setView(view === "admin" ? "onboarding" : "admin")}
+          >
+            {view === "admin" ? t.backToOnboarding : t.openOperator}
           </button>
         </div>
       </header>
 
+      <PrivacyNotice t={t} />
       <ServerBanner t={t} />
 
-      {view === "operator" ? (
-        <main className="layout layout-single">
-          <ReviewPanel t={t} lang={lang} />
+      {view === "admin" ? (
+        <main className="layout layout-wide">
+          <AdminPanel t={t} lang={lang} />
         </main>
       ) : (
         <main className="layout">

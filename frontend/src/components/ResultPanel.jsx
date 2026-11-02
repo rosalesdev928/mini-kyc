@@ -1,4 +1,5 @@
-import { FlagChips, StatusBadge } from "./common.jsx";
+import { ConfidenceMeter, FlagChips, StatusBadge } from "./common.jsx";
+import Stepper from "./Stepper.jsx";
 
 export default function ResultPanel({ t, lang, status, result, previewUrl, slow, onReset }) {
   return (
@@ -9,6 +10,8 @@ export default function ResultPanel({ t, lang, status, result, previewUrl, slow,
         </h2>
         {status === "success" && result && <StatusBadge t={t} status={result.status} />}
       </div>
+
+      <Stepper t={t} status={status} />
 
       {status === "loading" && (
         <div className="placeholder">
@@ -48,7 +51,9 @@ export default function ResultPanel({ t, lang, status, result, previewUrl, slow,
               </div>
               <div>
                 <dt>{t.confidence}</dt>
-                <dd>{result.ocr_confidence.toFixed(1)}%</dd>
+                <dd>
+                  <ConfidenceMeter t={t} value={result.ocr_confidence} />
+                </dd>
               </div>
               <div>
                 <dt>{t.registered}</dt>

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Mini KYC">
+  <path d="M16 2.2 27.5 6.6v8.7c0 7.2-4.9 12.6-11.5 14.5C9.4 27.9 4.5 22.5 4.5 15.3V6.6z" fill="#0b3a5b"/>
+  <path d="M16 2.2 27.5 6.6v8.7c0 7.2-4.9 12.6-11.5 14.5z" fill="#0b84c6"/>
+  <path d="M10.2 16.2l4.1 4.1 7.6-8.6" fill="none" stroke="#fff" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="25.4" cy="6.4" r="3.1" fill="#f5a300"/>
+</svg>

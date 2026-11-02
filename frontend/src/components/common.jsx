@@ -1,11 +1,15 @@
-// Small shared pieces: status badge, review-reason chips and number masking.
+// Small shared pieces: status badge, review-reason chips, confidence meter and number masking.
 
 const BADGE_CLASS = {
   VERIFIED: "badge-ok",
   APPROVED: "badge-ok",
   NEEDS_REVIEW: "badge-warn",
   REJECTED: "badge-danger",
+  ERASED: "badge-muted",
 };
+
+// Same default as the backend (MIN_VERIFIED_CONFIDENCE = 0.85): below it the record goes to manual review.
+const CONFIDENCE_THRESHOLD = 85;
 
 export function statusLabel(t, status) {
   return t.statuses[status] ?? status;
@@ -25,6 +29,29 @@ export function FlagChips({ t, flags }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+/** A small bar plus the number. Green at or above the review threshold, amber below it. */
+export function ConfidenceMeter({ t, value }) {
+  const percent = Math.max(0, Math.min(100, value));
+  return (
+    <span className="meter">
+      <span
+        className="meter-track"
+        role="meter"
+        aria-label={t.confidence}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(percent)}
+      >
+        <span
+          className={`meter-fill${percent < CONFIDENCE_THRESHOLD ? " meter-fill-low" : ""}`}
+          style={{ width: `${percent}%` }}
+        />
+      </span>
+      <span>{percent.toFixed(1)}%</span>
+    </span>
   );
 }
 
